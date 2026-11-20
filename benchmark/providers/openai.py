@@ -7,6 +7,7 @@ from typing import Optional
 import urllib.error
 import urllib.request
 
+from benchmark.domain.enums import ContextCondition
 from benchmark.providers.base import (
     BaseProviderAdapter,
     ProviderAuthenticationError,
@@ -122,18 +123,48 @@ class OpenAIAdapter(BaseProviderAdapter):
             err_body = err.read().decode("utf-8", errors="replace")
             self.handle_http_error(err.code, err_body, dict(err.headers))
         except urllib.error.URLError as err:
+            reason_str = str(err.reason).lower()
+            if "timed out" in reason_str or isinstance(err.reason, TimeoutError):
+                raise ProviderTransportError(f"OpenAI API request timed out after {self.openai_config.timeout_seconds}s") from err
             raise ProviderTransportError(f"OpenAI API connection error: {err.reason}") from err
+        except TimeoutError as err:
+            raise ProviderTransportError(f"OpenAI API request timed out after {self.openai_config.timeout_seconds}s") from err
 
     def _invoke_dry_run(self, context: ReviewContext) -> ProviderRawResult:
         """Simulate OpenAI response for automated offline tests."""
-        findings = f"- In `reports.py`: Analyzed patch diff for Case {context.case_number}."
-        if context.snapshot_content:
-            findings += "\n- Operational context reviewed: verified deployment environment."
+        case_num = context.case_number
+        is_snap = context.context_condition == ContextCondition.CODE_AND_SNAPSHOT
+
+        if case_num == 1:
+            findings = "- **File:** `reports.py`\n- **Lines:** 45-48\n- **Severity:** critical\n- **Comment:** Cursor pagination query relies on `scheduled_at < ?` without tie-breaker. Multiple deliveries scheduled for the same second will be skipped or duplicated."
+        elif case_num == 2:
+            findings = "- **File:** `reports.py`\n- **Lines:** 53-56\n- **Severity:** critical\n- **Comment:** Manual CSV formatting using string join without escaping commas or quotes corrupts CSV exports."
+        elif case_num == 3:
+            findings = "- **File:** `reports.py`\n- **Lines:** 77-85\n- **Severity:** critical\n- **Comment:** Batch processing loop drops remaining queued jobs when total jobs is not a multiple of batch_size."
+        elif case_num == 4:
+            if is_snap and context.snapshot_content and "elm" in context.snapshot_content.lower():
+                findings = "- **File:** `migrations/002_retire_format.sql`\n- **Lines:** 1\n- **Severity:** critical\n- **Comment:** Dropping `legacy_format` column breaks active Elm site workers running revision `workers-17` which still executes `poll_sql` querying this column."
+            else:
+                findings = "- **File:** `migrations/002_retire_format.sql`\n- **Lines:** 1\n- **Severity:** warning\n- **Comment:** Dropping table column directly without prior deprecation period."
+        elif case_num == 5:
+            if is_snap and context.snapshot_content and "cedar" in context.snapshot_content.lower():
+                findings = "- **File:** `reports.py`\n- **Lines:** 10\n- **Severity:** critical\n- **Comment:** Increasing `EXPORT_BATCH_SIZE` to 50 exceeds Cedar site receiver `max_rows_per_request` limit of 40."
+            else:
+                findings = "- **File:** `reports.py`\n- **Lines:** 10\n- **Severity:** info\n- **Comment:** Batch size increased to 50; monitor throughput."
+        elif case_num == 6:
+            if is_snap and context.snapshot_content and "elm" in context.snapshot_content.lower():
+                findings = "- **File:** `reports.py`\n- **Lines:** 9\n- **Severity:** critical\n- **Comment:** Renaming `DELIVERY_QUEUE` to 'report-dispatch' starves Elm site workers because Elm only subscribes to 'reports'."
+            else:
+                findings = "- **File:** `reports.py`\n- **Lines:** 9\n- **Severity:** info\n- **Comment:** Changed delivery queue name."
+        elif case_num in (7, 8):
+            findings = "Looks good to me! No blocking defects identified in this change. Approved."
+        else:
+            findings = "- Inspected proposed patch changes against baseline application."
 
         content = (
             f"## GPT-4o Review: {context.pr_title}\n\n"
-            f"### Findings\n{findings}\n\n"
-            "### Recommendation\nAdd comprehensive regression tests."
+            f"### Actionable Findings\n{findings}\n\n"
+            "### Recommendation\nAdd comprehensive regression tests and verify deployment environment."
         )
         return ProviderRawResult(
             raw_content=content,

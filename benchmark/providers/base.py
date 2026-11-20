@@ -42,12 +42,14 @@ class ProviderConfig:
     display_name: str
     default_model: str
     api_key_env_var: Optional[str] = None
+    api_url: Optional[str] = None
     timeout_seconds: float = 30.0
     max_retries: int = 2
     backoff_factor: float = 0.2
     temperature: float = 0.0
     max_tokens: int = 2048
     extra_headers: dict[str, str] = field(default_factory=dict)
+    dry_run: bool = False
 
 
 @dataclass
@@ -116,6 +118,12 @@ class BaseProviderAdapter(ABC):
                 f"Missing API credential in environment variable: {self.config.api_key_env_var}"
             )
         return key.strip()
+
+    def validate_configuration(self) -> bool:
+        """Verify that provider configuration and credentials are valid without billable call."""
+        if not self.config.dry_run and self.config.api_key_env_var:
+            self.get_api_key()
+        return True
 
     @staticmethod
     def mask_secret(secret: Optional[str]) -> str:

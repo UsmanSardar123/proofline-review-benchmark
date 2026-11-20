@@ -40,6 +40,7 @@ from benchmark.providers.base import (
     ProviderTransportError,
     ReviewContext,
 )
+from benchmark.providers.registry import ProviderRegistry
 from benchmark.reporting.formatters import BenchmarkReportGenerator
 from benchmark.scoring.service import ScoringService
 
@@ -69,6 +70,7 @@ class BenchmarkOrchestrator:
         self.extractor = FindingExtractor()
         self.scoring_service = ScoringService(db)
         self.report_generator = BenchmarkReportGenerator(db)
+        self.provider_registry = ProviderRegistry()
 
     def schedule_batch(
         self,
@@ -115,6 +117,18 @@ class BenchmarkOrchestrator:
         # Pre-create ReviewAttempt records in PENDING state
         for p_id in provider_ids:
             prov = self.prov_repo.get_by_id(p_id)
+            if not prov and p_id.lower() in self.provider_registry.list_registered():
+                # Auto-register known provider from registry into DB
+                adapter_cls = self.provider_registry._adapters[p_id.lower()]
+                adapter_instance = adapter_cls(dry_run=True)
+                prov = self.prov_repo.register(
+                    Provider(
+                        id=p_id,
+                        display_name=adapter_instance.display_name,
+                        adapter_type="api_http" if "mock" not in p_id.lower() else "mock",
+                        default_model=adapter_instance.default_model,
+                    )
+                )
             default_model = prov.default_model if prov else "default-model"
 
             for case in cases:
@@ -402,13 +416,22 @@ class BenchmarkOrchestrator:
     def run_batch(
         self,
         batch_id: str,
-        adapters: dict[str, BaseProviderAdapter],
+        adapters: Optional[dict[str, BaseProviderAdapter]] = None,
+        dry_run: bool = False,
     ) -> dict:
         """Execute all pending attempts for a batch using configured provider adapters."""
+        active_adapters = dict(adapters or {})
         attempts = self.attempt_repo.list_for_batch(batch_id)
         for att in attempts:
             if att.status == AttemptStatus.PENDING:
-                adapter = adapters.get(att.provider_id)
+                if att.provider_id not in active_adapters:
+                    try:
+                        active_adapters[att.provider_id] = self.provider_registry.get_adapter(
+                            att.provider_id, dry_run=dry_run
+                        )
+                    except KeyError:
+                        pass
+                adapter = active_adapters.get(att.provider_id)
                 if adapter:
                     self.execute_attempt(att, adapter)
 
