@@ -5,13 +5,17 @@ import json
 import sqlite3
 from typing import Optional
 
-from benchmark.domain.enums import AttemptStatus, AttemptType, ContextCondition
+from benchmark.domain.enums import AttemptStatus, AttemptType, ContextCondition, DefectCategory, EvaluationClass
 from benchmark.domain.models import (
+    AttemptScore,
     BenchmarkCase,
     ExecutionBatch,
     Experiment,
+    FindingEvaluation,
+    GroundTruthDefect,
     Provider,
     ReviewAttempt,
+    ReviewFinding,
     ReviewResponse,
     RunEvent,
 )
@@ -447,6 +451,94 @@ class ResponseRepository(BaseRepository):
         )
 
 
+class FindingRepository(BaseRepository):
+    def save(self, finding: ReviewFinding) -> ReviewFinding:
+        query = """
+            INSERT INTO review_findings (
+                id, response_id, attempt_id, file_path, line_start, line_end,
+                reported_severity, summary, raw_comment_slice, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        self.db.execute(
+            query,
+            (
+                finding.id,
+                finding.response_id,
+                finding.attempt_id,
+                finding.file_path,
+                finding.line_start,
+                finding.line_end,
+                finding.reported_severity,
+                finding.summary,
+                finding.raw_comment_slice,
+                finding.created_at,
+            ),
+        )
+        return finding
+
+    def save_all(self, findings: list[ReviewFinding]) -> list[ReviewFinding]:
+        for f in findings:
+            self.save(f)
+        return findings
+
+    def get_by_id(self, finding_id: str) -> Optional[ReviewFinding]:
+        query = "SELECT * FROM review_findings WHERE id = ?"
+        row = self.db.execute(query, (finding_id,)).fetchone()
+        if not row:
+            return None
+        return ReviewFinding(
+            id=row["id"],
+            response_id=row["response_id"],
+            attempt_id=row["attempt_id"],
+            file_path=row["file_path"],
+            line_start=row["line_start"],
+            line_end=row["line_end"],
+            reported_severity=row["reported_severity"],
+            summary=row["summary"],
+            raw_comment_slice=row["raw_comment_slice"],
+            created_at=row["created_at"],
+        )
+
+    def list_for_attempt(self, attempt_id: str) -> list[ReviewFinding]:
+        query = "SELECT * FROM review_findings WHERE attempt_id = ? ORDER BY id ASC"
+        rows = self.db.execute(query, (attempt_id,)).fetchall()
+        return [
+            ReviewFinding(
+                id=r["id"],
+                response_id=r["response_id"],
+                attempt_id=r["attempt_id"],
+                file_path=r["file_path"],
+                line_start=r["line_start"],
+                line_end=r["line_end"],
+                reported_severity=r["reported_severity"],
+                summary=r["summary"],
+                raw_comment_slice=r["raw_comment_slice"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    def list_for_response(self, response_id: str) -> list[ReviewFinding]:
+        query = "SELECT * FROM review_findings WHERE response_id = ? ORDER BY id ASC"
+        rows = self.db.execute(query, (response_id,)).fetchall()
+        return [
+            ReviewFinding(
+                id=r["id"],
+                response_id=r["response_id"],
+                attempt_id=r["attempt_id"],
+                file_path=r["file_path"],
+                line_start=r["line_start"],
+                line_end=r["line_end"],
+                reported_severity=r["reported_severity"],
+                summary=r["summary"],
+                raw_comment_slice=r["raw_comment_slice"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+
 class RunEventRepository(BaseRepository):
     def log(self, event: RunEvent) -> RunEvent:
         query = """
@@ -501,6 +593,264 @@ class RunEventRepository(BaseRepository):
                 message=r["message"],
                 details_json=r["details_json"],
                 created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+
+class GroundTruthRepository(BaseRepository):
+    def save(self, defect: GroundTruthDefect) -> GroundTruthDefect:
+        query = """
+            INSERT INTO ground_truth_defects (
+                id, case_id, defect_category, description, target_file,
+                target_lines, requires_snapshot, expected_action
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                case_id=excluded.case_id,
+                defect_category=excluded.defect_category,
+                description=excluded.description,
+                target_file=excluded.target_file,
+                target_lines=excluded.target_lines,
+                requires_snapshot=excluded.requires_snapshot,
+                expected_action=excluded.expected_action
+        """
+        self.db.execute(
+            query,
+            (
+                defect.id,
+                defect.case_id,
+                defect.defect_category.value if isinstance(defect.defect_category, DefectCategory) else defect.defect_category,
+                defect.description,
+                defect.target_file,
+                defect.target_lines,
+                1 if defect.requires_snapshot else 0,
+                defect.expected_action,
+            ),
+        )
+        return defect
+
+    def get_by_id(self, defect_id: str) -> Optional[GroundTruthDefect]:
+        query = "SELECT * FROM ground_truth_defects WHERE id = ?"
+        row = self.db.execute(query, (defect_id,)).fetchone()
+        if not row:
+            return None
+        return GroundTruthDefect(
+            id=row["id"],
+            case_id=row["case_id"],
+            defect_category=DefectCategory(row["defect_category"]),
+            description=row["description"],
+            target_file=row["target_file"],
+            target_lines=row["target_lines"],
+            requires_snapshot=bool(row["requires_snapshot"]),
+            expected_action=row["expected_action"],
+        )
+
+    def list_for_case(self, case_id: str) -> list[GroundTruthDefect]:
+        query = "SELECT * FROM ground_truth_defects WHERE case_id = ? ORDER BY id ASC"
+        rows = self.db.execute(query, (case_id,)).fetchall()
+        return [
+            GroundTruthDefect(
+                id=r["id"],
+                case_id=r["case_id"],
+                defect_category=DefectCategory(r["defect_category"]),
+                description=r["description"],
+                target_file=r["target_file"],
+                target_lines=r["target_lines"],
+                requires_snapshot=bool(r["requires_snapshot"]),
+                expected_action=r["expected_action"],
+            )
+            for r in rows
+        ]
+
+    def list_all(self) -> list[GroundTruthDefect]:
+        query = "SELECT * FROM ground_truth_defects ORDER BY case_id ASC, id ASC"
+        rows = self.db.execute(query).fetchall()
+        return [
+            GroundTruthDefect(
+                id=r["id"],
+                case_id=r["case_id"],
+                defect_category=DefectCategory(r["defect_category"]),
+                description=r["description"],
+                target_file=r["target_file"],
+                target_lines=r["target_lines"],
+                requires_snapshot=bool(r["requires_snapshot"]),
+                expected_action=r["expected_action"],
+            )
+            for r in rows
+        ]
+
+
+class EvaluationRepository(BaseRepository):
+    def save(self, eval_record: FindingEvaluation) -> FindingEvaluation:
+        query = """
+            INSERT INTO finding_evaluations (
+                id, finding_id, ground_truth_id, classification,
+                cites_deployment_evidence, evaluator_type, rationale, evaluated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                finding_id=excluded.finding_id,
+                ground_truth_id=excluded.ground_truth_id,
+                classification=excluded.classification,
+                cites_deployment_evidence=excluded.cites_deployment_evidence,
+                evaluator_type=excluded.evaluator_type,
+                rationale=excluded.rationale,
+                evaluated_at=excluded.evaluated_at
+        """
+        self.db.execute(
+            query,
+            (
+                eval_record.id,
+                eval_record.finding_id,
+                eval_record.ground_truth_id,
+                eval_record.classification.value if isinstance(eval_record.classification, EvaluationClass) else eval_record.classification,
+                1 if eval_record.cites_deployment_evidence else 0,
+                eval_record.evaluator_type,
+                eval_record.rationale,
+                eval_record.evaluated_at,
+            ),
+        )
+        return eval_record
+
+    def save_all(self, evaluations: list[FindingEvaluation]) -> list[FindingEvaluation]:
+        for e in evaluations:
+            self.save(e)
+        return evaluations
+
+    def get_by_id(self, eval_id: str) -> Optional[FindingEvaluation]:
+        query = "SELECT * FROM finding_evaluations WHERE id = ?"
+        row = self.db.execute(query, (eval_id,)).fetchone()
+        if not row:
+            return None
+        return FindingEvaluation(
+            id=row["id"],
+            finding_id=row["finding_id"],
+            classification=EvaluationClass(row["classification"]),
+            ground_truth_id=row["ground_truth_id"],
+            cites_deployment_evidence=bool(row["cites_deployment_evidence"]),
+            evaluator_type=row["evaluator_type"],
+            rationale=row["rationale"],
+            evaluated_at=row["evaluated_at"],
+        )
+
+    def get_by_finding_id(self, finding_id: str) -> Optional[FindingEvaluation]:
+        query = "SELECT * FROM finding_evaluations WHERE finding_id = ?"
+        row = self.db.execute(query, (finding_id,)).fetchone()
+        if not row:
+            return None
+        return FindingEvaluation(
+            id=row["id"],
+            finding_id=row["finding_id"],
+            classification=EvaluationClass(row["classification"]),
+            ground_truth_id=row["ground_truth_id"],
+            cites_deployment_evidence=bool(row["cites_deployment_evidence"]),
+            evaluator_type=row["evaluator_type"],
+            rationale=row["rationale"],
+            evaluated_at=row["evaluated_at"],
+        )
+
+    def list_for_attempt(self, attempt_id: str) -> list[FindingEvaluation]:
+        query = """
+            SELECT fe.* FROM finding_evaluations fe
+            JOIN review_findings rf ON fe.finding_id = rf.id
+            WHERE rf.attempt_id = ?
+            ORDER BY fe.evaluated_at ASC
+        """
+        rows = self.db.execute(query, (attempt_id,)).fetchall()
+        return [
+            FindingEvaluation(
+                id=r["id"],
+                finding_id=r["finding_id"],
+                classification=EvaluationClass(r["classification"]),
+                ground_truth_id=r["ground_truth_id"],
+                cites_deployment_evidence=bool(r["cites_deployment_evidence"]),
+                evaluator_type=r["evaluator_type"],
+                rationale=r["rationale"],
+                evaluated_at=r["evaluated_at"],
+            )
+            for r in rows
+        ]
+
+
+class AttemptScoreRepository(BaseRepository):
+    def save(self, score: AttemptScore) -> AttemptScore:
+        query = """
+            INSERT INTO attempt_scores (
+                id, attempt_id, tp_count, fp_count, fn_count, vuf_count,
+                precision_rate, recall_rate, f1_metric, passed_cleanly, computed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                attempt_id=excluded.attempt_id,
+                tp_count=excluded.tp_count,
+                fp_count=excluded.fp_count,
+                fn_count=excluded.fn_count,
+                vuf_count=excluded.vuf_count,
+                precision_rate=excluded.precision_rate,
+                recall_rate=excluded.recall_rate,
+                f1_metric=excluded.f1_metric,
+                passed_cleanly=excluded.passed_cleanly,
+                computed_at=excluded.computed_at
+        """
+        self.db.execute(
+            query,
+            (
+                score.id,
+                score.attempt_id,
+                score.tp_count,
+                score.fp_count,
+                score.fn_count,
+                score.vuf_count,
+                score.precision_rate,
+                score.recall_rate,
+                score.f1_metric,
+                1 if score.passed_cleanly else 0,
+                score.computed_at,
+            ),
+        )
+        return score
+
+    def get_by_attempt_id(self, attempt_id: str) -> Optional[AttemptScore]:
+        query = "SELECT * FROM attempt_scores WHERE attempt_id = ?"
+        row = self.db.execute(query, (attempt_id,)).fetchone()
+        if not row:
+            return None
+        return AttemptScore(
+            id=row["id"],
+            attempt_id=row["attempt_id"],
+            tp_count=row["tp_count"],
+            fp_count=row["fp_count"],
+            fn_count=row["fn_count"],
+            vuf_count=row["vuf_count"],
+            precision_rate=row["precision_rate"],
+            recall_rate=row["recall_rate"],
+            f1_metric=row["f1_metric"],
+            passed_cleanly=bool(row["passed_cleanly"]),
+            computed_at=row["computed_at"],
+        )
+
+    def list_for_batch(self, batch_id: str) -> list[AttemptScore]:
+        query = """
+            SELECT asc.* FROM attempt_scores asc
+            JOIN review_attempts ra ON asc.attempt_id = ra.id
+            WHERE ra.batch_id = ?
+            ORDER BY ra.case_id, ra.provider_id
+        """
+        rows = self.db.execute(query, (batch_id,)).fetchall()
+        return [
+            AttemptScore(
+                id=r["id"],
+                attempt_id=r["attempt_id"],
+                tp_count=r["tp_count"],
+                fp_count=r["fp_count"],
+                fn_count=r["fn_count"],
+                vuf_count=r["vuf_count"],
+                precision_rate=r["precision_rate"],
+                recall_rate=r["recall_rate"],
+                f1_metric=r["f1_metric"],
+                passed_cleanly=bool(r["passed_cleanly"]),
+                computed_at=r["computed_at"],
             )
             for r in rows
         ]

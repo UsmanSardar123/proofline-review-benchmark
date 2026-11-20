@@ -1,7 +1,10 @@
 """Run lifecycle, recovery, idempotency, and failure handling tests."""
 
+from pathlib import Path
+import tempfile
 import unittest
 
+from benchmark.collector.storage import RawEvidenceStore
 from benchmark.db.connection import get_connection
 from benchmark.db.migrations import migrate_benchmark_db
 from benchmark.db.repositories import ProviderRepository
@@ -32,10 +35,13 @@ class LifecycleOrchestratorTests(unittest.TestCase):
                 default_model="mock-model",
             )
         )
-        self.orch = BenchmarkOrchestrator(self.db)
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.evidence_store = RawEvidenceStore(root_dir=Path(self.tmp_dir.name))
+        self.orch = BenchmarkOrchestrator(self.db, evidence_store=self.evidence_store)
 
     def tearDown(self):
         self.db.close()
+        self.tmp_dir.cleanup()
 
     def test_complete_batch_lifecycle_and_idempotency(self):
         # 1. Schedule batch: 8 cases x 1 provider = 8 attempts

@@ -7,12 +7,18 @@ from typing import Optional
 import uuid
 
 from benchmark.cases.registry import CaseRegistry
+from benchmark.collector.collector import ReviewCollector
+from benchmark.collector.storage import RawEvidenceStore
 from benchmark.config import PROJECT_ROOT
 from benchmark.db.repositories import (
     AttemptRepository,
+    AttemptScoreRepository,
     BatchRepository,
     CaseRepository,
+    EvaluationRepository,
     ExperimentRepository,
+    FindingRepository,
+    GroundTruthRepository,
     ProviderRepository,
     ResponseRepository,
     RunEventRepository,
@@ -26,6 +32,7 @@ from benchmark.domain.models import (
     ReviewResponse,
     RunEvent,
 )
+from benchmark.eval.extractor import FindingExtractor
 from benchmark.providers.base import (
     BaseProviderAdapter,
     ProviderFatalError,
@@ -33,12 +40,19 @@ from benchmark.providers.base import (
     ProviderTransportError,
     ReviewContext,
 )
+from benchmark.reporting.formatters import BenchmarkReportGenerator
+from benchmark.scoring.service import ScoringService
 
 
 class BenchmarkOrchestrator:
     """Coordinates batch scheduling, attempt execution, idempotency, and recovery."""
 
-    def __init__(self, db, cases_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        db,
+        cases_dir: Optional[Path] = None,
+        evidence_store: Optional[RawEvidenceStore] = None,
+    ):
         self.db = db
         self.exp_repo = ExperimentRepository(db)
         self.batch_repo = BatchRepository(db)
@@ -48,6 +62,13 @@ class BenchmarkOrchestrator:
         self.response_repo = ResponseRepository(db)
         self.event_repo = RunEventRepository(db)
         self.case_registry = CaseRegistry(cases_dir)
+        self.collector = ReviewCollector(self.response_repo, evidence_store=evidence_store)
+        self.finding_repo = FindingRepository(db)
+        self.score_repo = AttemptScoreRepository(db)
+        self.eval_repo = EvaluationRepository(db)
+        self.extractor = FindingExtractor()
+        self.scoring_service = ScoringService(db)
+        self.report_generator = BenchmarkReportGenerator(db)
 
     def schedule_batch(
         self,
@@ -75,6 +96,9 @@ class BenchmarkOrchestrator:
             case = self.case_registry.load_case(num)
             self.case_repo.register(case)
             cases.append(case)
+
+        # Seed ground truths for registered cases
+        self.scoring_service.seed_ground_truths([c.id for c in cases])
 
         # Pre-calculate exact planned denominator
         total_planned = len(provider_ids) * len(cases) * len(context_conditions) * repeat_count
@@ -177,19 +201,8 @@ class BenchmarkOrchestrator:
                 result = adapter.invoke_review(context)
                 duration_ms = result.duration_ms or int((time.perf_counter() - t0) * 1000)
 
-                # Persist unedited raw review response
-                response_id = f"resp-{attempt.id}"
-                self.response_repo.save(
-                    ReviewResponse(
-                        id=response_id,
-                        attempt_id=attempt.id,
-                        raw_content=result.raw_content,
-                        external_id=result.external_id,
-                        http_status=result.http_status,
-                        prompt_tokens=result.prompt_tokens,
-                        completion_tokens=result.completion_tokens,
-                    )
-                )
+                # Collect, normalize, and persist review response (DB and disk mirror)
+                self.collector.collect(attempt, result)
 
                 # Transition: RUNNING -> COMPLETED
                 comp_ts = datetime.now(timezone.utc).isoformat()
@@ -204,11 +217,20 @@ class BenchmarkOrchestrator:
                         message=f"Review completed successfully in {duration_ms}ms",
                     )
                 )
+
+                # Extract findings and evaluate attempt against ground truth
+                resp = self.response_repo.get_by_attempt_id(attempt.id)
+                if resp:
+                    findings = self.extractor.extract_findings(resp)
+                    self.finding_repo.save_all(findings)
+                self.scoring_service.evaluate_attempt(attempt.id)
+
                 return self.attempt_repo.get_by_id(attempt.id)
 
             except ProviderQuotaError as exc:
                 # Quota stop: 429 / credit exhaustion
                 self.attempt_repo.mark_quota_exhausted(attempt.id, str(exc))
+                self.scoring_service.evaluate_attempt(attempt.id)
                 self.event_repo.log(
                     RunEvent(
                         batch_id=attempt.batch_id,
@@ -237,6 +259,7 @@ class BenchmarkOrchestrator:
                     continue
                 else:
                     self.attempt_repo.mark_failed(attempt.id, f"Transport retries exhausted: {exc}")
+                    self.scoring_service.evaluate_attempt(attempt.id)
                     self.event_repo.log(
                         RunEvent(
                             batch_id=attempt.batch_id,
@@ -251,6 +274,7 @@ class BenchmarkOrchestrator:
 
             except Exception as exc:
                 self.attempt_repo.mark_failed(attempt.id, str(exc))
+                self.scoring_service.evaluate_attempt(attempt.id)
                 self.event_repo.log(
                     RunEvent(
                         batch_id=attempt.batch_id,
@@ -374,3 +398,43 @@ class BenchmarkOrchestrator:
             "failed": failed,
             "pending": pending,
         }
+
+    def run_batch(
+        self,
+        batch_id: str,
+        adapters: dict[str, BaseProviderAdapter],
+    ) -> dict:
+        """Execute all pending attempts for a batch using configured provider adapters."""
+        attempts = self.attempt_repo.list_for_batch(batch_id)
+        for att in attempts:
+            if att.status == AttemptStatus.PENDING:
+                adapter = adapters.get(att.provider_id)
+                if adapter:
+                    self.execute_attempt(att, adapter)
+
+        all_now = self.attempt_repo.list_for_batch(batch_id)
+        completed = sum(1 for a in all_now if a.status == AttemptStatus.COMPLETED)
+        quota_halt = sum(1 for a in all_now if a.status == AttemptStatus.QUOTA_EXHAUSTED)
+        failed = sum(1 for a in all_now if a.status == AttemptStatus.FAILED)
+        pending = sum(1 for a in all_now if a.status == AttemptStatus.PENDING)
+
+        if pending == 0 and quota_halt == 0:
+            self.batch_repo.update_status(batch_id, "completed", datetime.now(timezone.utc).isoformat())
+        elif quota_halt > 0:
+            self.batch_repo.update_status(batch_id, "quota_halted")
+        else:
+            self.batch_repo.update_status(batch_id, "running")
+
+        batch = self.batch_repo.get_by_id(batch_id)
+        return {
+            "batch_id": batch_id,
+            "planned": batch.planned_attempts_count if batch else len(all_now),
+            "completed": completed,
+            "quota_exhausted": quota_halt,
+            "failed": failed,
+            "pending": pending,
+        }
+
+    def generate_report(self, batch_id: str, title: Optional[str] = None) -> dict:
+        """Generate a complete structured benchmark report (Markdown, CSV, JSON) for a batch."""
+        return self.report_generator.generate_full_report(batch_id, title=title or f"Proofline AI Review Benchmark ({batch_id})")

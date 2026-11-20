@@ -1,7 +1,10 @@
 """Mock provider adapter for testing, dry-runs, and deterministic validation."""
 
+from typing import Optional
+
 from benchmark.providers.base import (
     BaseProviderAdapter,
+    ProviderConfig,
     ProviderFatalError,
     ProviderQuotaError,
     ProviderRawResult,
@@ -19,10 +22,14 @@ class MockProviderAdapter(BaseProviderAdapter):
         display_name: str = "Mock AI Reviewer",
         default_model: str = "mock-model-v1",
         mode: str = "success",
+        config: Optional[ProviderConfig] = None,
     ):
-        self.provider_id = provider_id
-        self.display_name = display_name
-        self.default_model = default_model
+        cfg = config or ProviderConfig(
+            provider_id=provider_id,
+            display_name=display_name,
+            default_model=default_model,
+        )
+        super().__init__(cfg)
         self.mode = mode
         self.calls = 0
 
@@ -39,7 +46,6 @@ class MockProviderAdapter(BaseProviderAdapter):
             if self.calls == 1:
                 raise ProviderTransportError(f"Simulated transient error on attempt {self.calls}")
 
-        # Normal successful review output
         return ProviderRawResult(
             raw_content=(
                 f"### Mock Review for Case {context.case_number}: {context.pr_title}\n\n"
@@ -52,4 +58,5 @@ class MockProviderAdapter(BaseProviderAdapter):
             prompt_tokens=250,
             completion_tokens=60,
             duration_ms=45,
+            model_name=self.default_model,
         )
