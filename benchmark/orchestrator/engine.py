@@ -42,6 +42,7 @@ from benchmark.providers.base import (
 )
 from benchmark.providers.registry import ProviderRegistry
 from benchmark.reporting.formatters import BenchmarkReportGenerator
+from benchmark.scoring.calibration import CalibrationProfile
 from benchmark.scoring.service import ScoringService
 
 
@@ -53,6 +54,7 @@ class BenchmarkOrchestrator:
         db,
         cases_dir: Optional[Path] = None,
         evidence_store: Optional[RawEvidenceStore] = None,
+        calibration_profile: Optional[CalibrationProfile] = None,
     ):
         self.db = db
         self.exp_repo = ExperimentRepository(db)
@@ -68,9 +70,13 @@ class BenchmarkOrchestrator:
         self.score_repo = AttemptScoreRepository(db)
         self.eval_repo = EvaluationRepository(db)
         self.extractor = FindingExtractor()
-        self.scoring_service = ScoringService(db)
+        self.scoring_service = ScoringService(db, calibration_profile=calibration_profile)
         self.report_generator = BenchmarkReportGenerator(db)
         self.provider_registry = ProviderRegistry()
+
+    def set_calibration_profile(self, profile: CalibrationProfile) -> None:
+        """Update active calibration profile for finding matching and scoring."""
+        self.scoring_service.set_calibration_profile(profile)
 
     def schedule_batch(
         self,
@@ -160,6 +166,7 @@ class BenchmarkOrchestrator:
                 message=f"Scheduled batch {batch_name} with {total_planned} planned attempts",
             )
         )
+        self.db.commit()
         return batch
 
     def execute_attempt(
@@ -238,6 +245,7 @@ class BenchmarkOrchestrator:
                     findings = self.extractor.extract_findings(resp)
                     self.finding_repo.save_all(findings)
                 self.scoring_service.evaluate_attempt(attempt.id)
+                self.db.commit()
 
                 return self.attempt_repo.get_by_id(attempt.id)
 
@@ -255,6 +263,7 @@ class BenchmarkOrchestrator:
                         message=f"Provider quota exhausted: {exc}",
                     )
                 )
+                self.db.commit()
                 return self.attempt_repo.get_by_id(attempt.id)
 
             except ProviderTransportError as exc:
@@ -269,6 +278,7 @@ class BenchmarkOrchestrator:
                             message=f"Transient transport failure (retry {retries_done}/{max_retries}): {exc}",
                         )
                     )
+                    self.db.commit()
                     time.sleep(0.05)  # brief backoff
                     continue
                 else:
@@ -284,6 +294,7 @@ class BenchmarkOrchestrator:
                             message=f"Failed after {max_retries} retries: {exc}",
                         )
                     )
+                    self.db.commit()
                     return self.attempt_repo.get_by_id(attempt.id)
 
             except Exception as exc:
@@ -299,8 +310,10 @@ class BenchmarkOrchestrator:
                         message=f"Fatal attempt failure: {exc}",
                     )
                 )
+                self.db.commit()
                 return self.attempt_repo.get_by_id(attempt.id)
 
+        self.db.commit()
         return self.attempt_repo.get_by_id(attempt.id)
 
     def schedule_intentional_repeat(self, original_attempt_id: str) -> ReviewAttempt:
@@ -342,13 +355,15 @@ class BenchmarkOrchestrator:
                 message=f"Scheduled intentional repeat #{next_attempt_number} linked to parent {original_attempt_id}",
             )
         )
+        self.db.commit()
         return repeat_attempt
 
     def recover_and_resume_batch(
         self,
         batch_id: str,
-        adapters: dict[str, BaseProviderAdapter],
+        adapters: Optional[dict[str, BaseProviderAdapter]] = None,
         resume_quota: bool = False,
+        dry_run: bool = False,
     ) -> dict:
         """Recover from an interrupted run and resume incomplete attempts."""
         batch = self.batch_repo.get_by_id(batch_id)
@@ -382,10 +397,30 @@ class BenchmarkOrchestrator:
             if att.status == AttemptStatus.PENDING:
                 to_run.append(att)
             elif att.status == AttemptStatus.QUOTA_EXHAUSTED and resume_quota:
+                # Reset quota status to pending
+                self.attempt_repo.update_status(att.id, AttemptStatus.PENDING)
+                self.event_repo.log(
+                    RunEvent(
+                        batch_id=batch_id,
+                        attempt_id=att.id,
+                        event_type="STATE_TRANSITION",
+                        from_state=AttemptStatus.QUOTA_EXHAUSTED.value,
+                        to_state=AttemptStatus.PENDING.value,
+                        message="Resuming quota-exhausted attempt per user override",
+                    )
+                )
                 to_run.append(att)
 
+        active_adapters = dict(adapters or {})
         for att in to_run:
-            adapter = adapters.get(att.provider_id)
+            if att.provider_id not in active_adapters:
+                try:
+                    active_adapters[att.provider_id] = self.provider_registry.get_adapter(
+                        att.provider_id, dry_run=dry_run
+                    )
+                except KeyError:
+                    pass
+            adapter = active_adapters.get(att.provider_id)
             if not adapter:
                 continue
             self.execute_attempt(att, adapter)
@@ -400,10 +435,11 @@ class BenchmarkOrchestrator:
         if pending == 0 and quota_halt == 0:
             self.batch_repo.update_status(batch_id, "completed", datetime.now(timezone.utc).isoformat())
         elif quota_halt > 0:
-            self.batch_repo.update_status(batch_id, "quota_halted")
+            self.batch_repo.update_status(batch_id, "interrupted")
         else:
             self.batch_repo.update_status(batch_id, "running")
 
+        self.db.commit()
         return {
             "batch_id": batch_id,
             "planned": batch.planned_attempts_count,
@@ -444,10 +480,11 @@ class BenchmarkOrchestrator:
         if pending == 0 and quota_halt == 0:
             self.batch_repo.update_status(batch_id, "completed", datetime.now(timezone.utc).isoformat())
         elif quota_halt > 0:
-            self.batch_repo.update_status(batch_id, "quota_halted")
+            self.batch_repo.update_status(batch_id, "interrupted")
         else:
             self.batch_repo.update_status(batch_id, "running")
 
+        self.db.commit()
         batch = self.batch_repo.get_by_id(batch_id)
         return {
             "batch_id": batch_id,
@@ -461,3 +498,7 @@ class BenchmarkOrchestrator:
     def generate_report(self, batch_id: str, title: Optional[str] = None) -> dict:
         """Generate a complete structured benchmark report (Markdown, CSV, JSON) for a batch."""
         return self.report_generator.generate_full_report(batch_id, title=title or f"Proofline AI Review Benchmark ({batch_id})")
+
+    def export_report(self, batch_id: str, output_dir: Path | str, title: Optional[str] = None) -> dict[str, Path]:
+        """Generate and export full benchmark report files into target directory."""
+        return self.report_generator.export_to_directory(batch_id, output_dir, title=title)

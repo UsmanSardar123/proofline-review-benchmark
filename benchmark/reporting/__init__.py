@@ -12,6 +12,8 @@ from benchmark.reporting.matrix import (
     BenchmarkMatrixGenerator,
     DenominatorSummary,
     MatrixCell,
+    PartitionComparisonMatrix,
+    PartitionComparisonRow,
     ProviderCaseMatrix,
     ProviderDenominator,
     ProviderSummary,
@@ -30,4 +32,6 @@ __all__ = [
     "AblationRow",
     "DenominatorSummary",
     "ProviderDenominator",
+    "PartitionComparisonMatrix",
+    "PartitionComparisonRow",
 ]

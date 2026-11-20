@@ -23,6 +23,8 @@ class MockProviderAdapter(BaseProviderAdapter):
         default_model: str = "mock-model-v1",
         mode: str = "success",
         config: Optional[ProviderConfig] = None,
+        dry_run: bool = False,
+        **kwargs,
     ):
         cfg = config or ProviderConfig(
             provider_id=provider_id,
@@ -32,6 +34,7 @@ class MockProviderAdapter(BaseProviderAdapter):
         super().__init__(cfg)
         self.mode = mode
         self.calls = 0
+        self.dry_run = dry_run
 
     def invoke_review(self, context: ReviewContext) -> ProviderRawResult:
         self.calls += 1

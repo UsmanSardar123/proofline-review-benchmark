@@ -138,6 +138,22 @@ class BatchRepository(BaseRepository):
             for r in rows
         ]
 
+    def list_all(self, limit: int = 50) -> list[ExecutionBatch]:
+        query = "SELECT * FROM execution_batches ORDER BY started_at DESC, id DESC LIMIT ?"
+        rows = self.db.execute(query, (limit,)).fetchall()
+        return [
+            ExecutionBatch(
+                id=r["id"],
+                experiment_id=r["experiment_id"],
+                batch_name=r["batch_name"],
+                planned_attempts_count=r["planned_attempts_count"],
+                status=r["status"],
+                started_at=r["started_at"],
+                completed_at=r["completed_at"],
+            )
+            for r in rows
+        ]
+
 
 class ProviderRepository(BaseRepository):
     def register(self, provider: Provider) -> Provider:

@@ -86,6 +86,27 @@ class ProviderDenominator:
 
 
 @dataclass
+class PartitionComparisonRow:
+    provider_id: str
+    calibration_cases_count: int
+    heldout_cases_count: int
+    calibration_f1: float
+    heldout_f1: float
+    f1_delta: float
+    missed_cases: list[str]
+    spurious_cases: list[str]
+    is_overfitted: bool
+
+
+@dataclass
+class PartitionComparisonMatrix:
+    batch_id: str
+    calibration_cases: list[str]
+    heldout_cases: list[str]
+    rows: list[PartitionComparisonRow] = field(default_factory=list)
+
+
+@dataclass
 class DenominatorSummary:
     batch_id: str
     planned_total: int = 0
@@ -350,4 +371,67 @@ class BenchmarkMatrixGenerator:
             pending_total=total_pending,
             completion_rate_pct=total_pct,
             providers=prov_map,
+        )
+
+    def generate_partition_comparison_matrix(self, batch_id: str) -> PartitionComparisonMatrix:
+        """Generate side-by-side performance comparison across Calibration vs Held-Out partitions."""
+        from benchmark.scoring.heldout import PartitionManager
+        from benchmark.scoring.metrics import ScoringCalculator
+
+        attempts = self.attempt_repo.list_for_batch(batch_id)
+        providers = sorted(list({a.provider_id for a in attempts}))
+        cal_cases = set(PartitionManager.CALIBRATION_CASES)
+        held_cases = set(PartitionManager.HELDOUT_CASES)
+
+        rows: list[PartitionComparisonRow] = []
+
+        for p_id in providers:
+            p_attempts = [a for a in attempts if a.provider_id == p_id and a.status == AttemptStatus.COMPLETED]
+            
+            cal_scores = []
+            held_scores = []
+            missed = []
+            spurious = []
+
+            for a in p_attempts:
+                s = self.score_repo.get_by_attempt_id(a.id)
+                if not s:
+                    continue
+                if a.case_id in cal_cases:
+                    cal_scores.append(s)
+                elif a.case_id in held_cases:
+                    held_scores.append(s)
+
+                if s.fn_count > 0 and a.case_id not in missed:
+                    missed.append(a.case_id)
+                if s.fp_count > 0 and a.case_id not in spurious:
+                    spurious.append(a.case_id)
+
+            cal_rollup = ScoringCalculator.calculate_aggregate_rollup(cal_scores)
+            held_rollup = ScoringCalculator.calculate_aggregate_rollup(held_scores)
+
+            cal_f1 = cal_rollup["micro_f1"]
+            held_f1 = held_rollup["micro_f1"]
+            delta = round(held_f1 - cal_f1, 4)
+            is_overfitted = (cal_f1 - held_f1) > 0.25
+
+            rows.append(
+                PartitionComparisonRow(
+                    provider_id=p_id,
+                    calibration_cases_count=cal_rollup["count"],
+                    heldout_cases_count=held_rollup["count"],
+                    calibration_f1=cal_f1,
+                    heldout_f1=held_f1,
+                    f1_delta=delta,
+                    missed_cases=sorted(missed),
+                    spurious_cases=sorted(spurious),
+                    is_overfitted=is_overfitted,
+                )
+            )
+
+        return PartitionComparisonMatrix(
+            batch_id=batch_id,
+            calibration_cases=sorted(list(cal_cases)),
+            heldout_cases=sorted(list(held_cases)),
+            rows=rows,
         )

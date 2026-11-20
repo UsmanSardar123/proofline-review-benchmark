@@ -1,7 +1,6 @@
 """Scoring service and ground truth evaluation for review findings."""
 
 from datetime import datetime, timezone
-import re
 from typing import Optional
 import uuid
 
@@ -21,6 +20,10 @@ from benchmark.domain.models import (
     ReviewAttempt,
     ReviewFinding,
 )
+from benchmark.scoring.calibration import CalibrationProfile, STANDARD_PROFILE
+from benchmark.scoring.matcher import FindingMatcher, MatchResult
+from benchmark.scoring.metrics import MetricSummary, ScoringCalculator
+from benchmark.scoring.quality import FindingQualityEvaluator
 
 
 STANDARD_GROUND_TRUTHS = {
@@ -110,7 +113,11 @@ STANDARD_GROUND_TRUTHS = {
 class ScoringService:
     """Evaluates extracted review findings against ground truth and calculates scores."""
 
-    def __init__(self, db):
+    def __init__(
+        self,
+        db,
+        calibration_profile: Optional[CalibrationProfile] = None,
+    ):
         self.db = db
         self.gt_repo = GroundTruthRepository(db)
         self.case_repo = CaseRepository(db)
@@ -118,6 +125,15 @@ class ScoringService:
         self.finding_repo = FindingRepository(db)
         self.eval_repo = EvaluationRepository(db)
         self.score_repo = AttemptScoreRepository(db)
+
+        self.calibration_profile = calibration_profile or STANDARD_PROFILE
+        self.matcher = FindingMatcher(self.calibration_profile.to_matching_config())
+        self.quality_evaluator = FindingQualityEvaluator()
+
+    def set_calibration_profile(self, profile: CalibrationProfile) -> None:
+        """Update active calibration profile for scoring and matching."""
+        self.calibration_profile = profile
+        self.matcher = FindingMatcher(profile.to_matching_config())
 
     def seed_ground_truths(self, case_ids: Optional[list[str]] = None) -> list[GroundTruthDefect]:
         """Seed authoritative ground truth definitions into ground_truth_defects table."""
@@ -189,9 +205,13 @@ class ScoringService:
             fp_count = 0
             vuf_count = 0
             evaluations = []
+            quality_list = []
 
             for f in findings:
                 sev = (f.reported_severity or "").lower()
+                q = self.quality_evaluator.evaluate_finding(f, cites_deployment_evidence=False)
+                quality_list.append(q)
+
                 is_spurious_defect = sev in ("high", "critical", "error", "blocker") or any(
                     kw in f.summary.lower() for kw in ["bug", "defect", "error", "broken", "vulnerability"]
                 )
@@ -218,74 +238,85 @@ class ScoringService:
 
             self.eval_repo.save_all(evaluations)
 
-            passed_cleanly = (fp_count == 0)
-            precision = 1.0 if passed_cleanly else 0.0
-            recall = 1.0 if passed_cleanly else 0.0
-            f1 = 1.0 if passed_cleanly else 0.0
+            mean_spec = sum(q.specificity_score for q in quality_list) / len(quality_list) if quality_list else 1.0
+            mean_act = sum(q.actionability_score for q in quality_list) / len(quality_list) if quality_list else 1.0
+
+            metric = ScoringCalculator.calculate_metrics(
+                tp=0,
+                fp=fp_count,
+                fn=0,
+                vuf=vuf_count,
+                duplicates=0,
+                is_clean_case=True,
+                mean_specificity=round(mean_spec, 2),
+                mean_actionability=round(mean_act, 2),
+            )
 
             score = AttemptScore(
                 id=score_id,
                 attempt_id=attempt_id,
                 tp_count=0,
-                fp_count=fp_count,
+                fp_count=metric.fp_count,
                 fn_count=0,
-                vuf_count=vuf_count,
-                precision_rate=precision,
-                recall_rate=recall,
-                f1_metric=f1,
-                passed_cleanly=passed_cleanly,
+                vuf_count=metric.vuf_count,
+                precision_rate=metric.precision,
+                recall_rate=metric.recall,
+                f1_metric=metric.f1_score,
+                passed_cleanly=metric.passed_cleanly,
                 computed_at=now_str,
             )
             return self.score_repo.save(score)
 
         # Cases 01-06: Changes containing genuine defects
-        target_file = meta["target_file"] if meta else ""
         detection_keywords = meta.get("detection_keywords", []) if meta else []
         evidence_keywords = meta.get("evidence_keywords", []) if meta else []
 
         tp_count = 0
         fp_count = 0
-        fn_count = 0
+        duplicate_count = 0
         vuf_count = 0
         matched_gt = False
         evaluations = []
+        quality_list = []
 
         for f in findings:
-            text_to_check = f"{f.summary} {f.raw_comment_slice or ''}".lower()
-            file_match = not target_file or not f.file_path or (target_file.lower() in f.file_path.lower())
-            
-            # Check for keyword match
-            has_keyword = any(kw.lower() in text_to_check for kw in detection_keywords)
-            
-            # Check if this finding detects the ground truth defect
-            if file_match and has_keyword:
-                cites_evidence = any(ekw.lower() in text_to_check for ekw in evidence_keywords)
+            # Use FindingMatcher for robust location and semantic matching
+            match_res: MatchResult = self.matcher.match(
+                finding=f,
+                defect=gt,
+                detection_keywords=detection_keywords,
+                evidence_keywords=evidence_keywords,
+            )
+            q = self.quality_evaluator.evaluate_finding(f, match_res.cites_deployment_evidence)
+            quality_list.append(q)
+
+            if match_res.is_match:
                 if not matched_gt:
                     matched_gt = True
                     tp_count += 1
                     classification = EvaluationClass.TRUE_POSITIVE
-                    rationale = f"Accurately detected ground truth defect for {case_id}"
+                    rationale = f"Accurately detected ground truth defect for {case_id}. {match_res.rationale}"
                 else:
+                    duplicate_count += 1
                     classification = EvaluationClass.DUPLICATE
-                    rationale = "Subsequent comment addressing the same defect"
+                    rationale = f"Subsequent duplicate comment addressing defect. {match_res.rationale}"
             else:
-                cites_evidence = False
                 sev = (f.reported_severity or "").lower()
                 if sev in ("high", "critical", "error", "blocker"):
                     fp_count += 1
                     classification = EvaluationClass.FALSE_POSITIVE
-                    rationale = "Reported non-existent or mischaracterized defect"
+                    rationale = f"Reported non-existent or mischaracterized defect. {match_res.rationale}"
                 else:
                     vuf_count += 1
                     classification = EvaluationClass.VALID_UNEXPECTED
-                    rationale = "General code review suggestion"
+                    rationale = f"General code review suggestion. {match_res.rationale}"
 
             eval_rec = FindingEvaluation(
                 id=f"eval-{uuid.uuid4().hex[:12]}",
                 finding_id=f.id,
                 classification=classification,
                 ground_truth_id=gt.id if gt else None,
-                cites_deployment_evidence=cites_evidence,
+                cites_deployment_evidence=match_res.cites_deployment_evidence,
                 evaluator_type="rule_matcher",
                 rationale=rationale,
                 evaluated_at=now_str,
@@ -294,25 +325,35 @@ class ScoringService:
 
         self.eval_repo.save_all(evaluations)
 
-        if not matched_gt:
-            fn_count = 1
+        fn_count = 0 if matched_gt else 1
 
-        precision = (tp_count / (tp_count + fp_count)) if (tp_count + fp_count) > 0 else 0.0
-        recall = (tp_count / (tp_count + fn_count)) if (tp_count + fn_count) > 0 else 0.0
-        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
-        passed_cleanly = (tp_count > 0 and fp_count == 0)
+        mean_spec = sum(q.specificity_score for q in quality_list) / len(quality_list) if quality_list else 0.0
+        mean_act = sum(q.actionability_score for q in quality_list) / len(quality_list) if quality_list else 0.0
+        mean_ev = sum(q.evidence_score for q in quality_list) / len(quality_list) if quality_list else 0.0
+
+        metric = ScoringCalculator.calculate_metrics(
+            tp=tp_count,
+            fp=fp_count,
+            fn=fn_count,
+            vuf=vuf_count,
+            duplicates=duplicate_count,
+            is_clean_case=False,
+            mean_specificity=round(mean_spec, 2),
+            mean_actionability=round(mean_act, 2),
+            mean_evidence=round(mean_ev, 2),
+        )
 
         score = AttemptScore(
             id=score_id,
             attempt_id=attempt_id,
-            tp_count=tp_count,
-            fp_count=fp_count,
-            fn_count=fn_count,
-            vuf_count=vuf_count,
-            precision_rate=round(precision, 4),
-            recall_rate=round(recall, 4),
-            f1_metric=round(f1, 4),
-            passed_cleanly=passed_cleanly,
+            tp_count=metric.tp_count,
+            fp_count=metric.fp_count,
+            fn_count=metric.fn_count,
+            vuf_count=metric.vuf_count,
+            precision_rate=metric.precision,
+            recall_rate=metric.recall,
+            f1_metric=metric.f1_score,
+            passed_cleanly=metric.passed_cleanly,
             computed_at=now_str,
         )
         return self.score_repo.save(score)

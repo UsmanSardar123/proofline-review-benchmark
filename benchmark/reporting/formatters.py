@@ -3,6 +3,7 @@
 import csv
 from io import StringIO
 import json
+from pathlib import Path
 from typing import Any, Optional
 
 from benchmark.domain.enums import ContextCondition
@@ -10,6 +11,7 @@ from benchmark.reporting.matrix import (
     AblationMatrix,
     BenchmarkMatrixGenerator,
     DenominatorSummary,
+    PartitionComparisonMatrix,
     ProviderCaseMatrix,
 )
 
@@ -86,6 +88,26 @@ class MarkdownFormatter:
         )
         return "\n".join(lines)
 
+    @staticmethod
+    def format_partition_comparison(part_matrix: PartitionComparisonMatrix) -> str:
+        lines = []
+        lines.append(f"### Calibration vs Held-Out Generalization (Batch: {part_matrix.batch_id})\n")
+        lines.append(f"- **Calibration Cases**: {', '.join(part_matrix.calibration_cases)}")
+        lines.append(f"- **Held-Out Test Cases**: {', '.join(part_matrix.heldout_cases)}\n")
+        lines.append("| Provider | Cal Cases | Held Cases | Cal F1 | Held F1 | Delta (Held - Cal) | Missed Cases | Overfit Alert |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+
+        for r in part_matrix.rows:
+            delta_sign = "+" if r.f1_delta > 0 else ""
+            delta_str = f"{delta_sign}{r.f1_delta:.2f}"
+            missed_str = ", ".join(r.missed_cases) if r.missed_cases else "None"
+            alert = "⚠️ Overfitting Risk" if r.is_overfitted else "✓ Generalizing"
+            lines.append(
+                f"| {r.provider_id} | {r.calibration_cases_count} | {r.heldout_cases_count} | {r.calibration_f1:.2f} | {r.heldout_f1:.2f} | {delta_str} | {missed_str} | {alert} |"
+            )
+
+        return "\n".join(lines)
+
 
 class CSVFormatter:
     """Renders benchmark comparisons and summaries as CSV strings for spreadsheet export."""
@@ -146,6 +168,22 @@ class CSVFormatter:
         writer.writerow(["TOTAL", denom.planned_total, denom.completed_total, denom.quota_halted_total, denom.failed_total, denom.pending_total, denom.completion_rate_pct])
         return output.getvalue()
 
+    @staticmethod
+    def format_partition_comparison_csv(part_matrix: PartitionComparisonMatrix) -> str:
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "provider_id", "calibration_cases_count", "heldout_cases_count",
+            "calibration_f1", "heldout_f1", "f1_delta", "missed_cases", "is_overfitted"
+        ])
+        for r in part_matrix.rows:
+            writer.writerow([
+                r.provider_id, r.calibration_cases_count, r.heldout_cases_count,
+                r.calibration_f1, r.heldout_f1, r.f1_delta,
+                ";".join(r.missed_cases), r.is_overfitted
+            ])
+        return output.getvalue()
+
 
 class JSONFormatter:
     """Serializes structured benchmark results to JSON."""
@@ -175,22 +213,26 @@ class BenchmarkReportGenerator:
         matrix = self.generator.generate_provider_case_matrix(batch_id)
         ablation = self.generator.generate_ablation_matrix(batch_id)
         denominators = self.generator.generate_denominator_summary(batch_id)
+        partition = self.generator.generate_partition_comparison_matrix(batch_id)
 
         md_matrix = MarkdownFormatter.format_matrix(matrix)
         md_ablation = MarkdownFormatter.format_ablation(ablation)
         md_denominators = MarkdownFormatter.format_denominators(denominators)
+        md_partition = MarkdownFormatter.format_partition_comparison(partition)
 
         full_markdown = (
             f"# {title}\n\n"
             f"**Batch ID:** `{batch_id}`\n\n"
             f"## 1. Denominator & Run Breadth\n\n{md_denominators}\n\n"
             f"## 2. Provider vs Case Comparison Matrix\n\n{md_matrix}\n\n"
-            f"## 3. Deployment Context Ablation\n\n{md_ablation}\n"
+            f"## 3. Deployment Context Ablation\n\n{md_ablation}\n\n"
+            f"## 4. Calibration vs Held-Out Generalization\n\n{md_partition}\n"
         )
 
         csv_matrix = CSVFormatter.format_matrix_csv(matrix)
         csv_ablation = CSVFormatter.format_ablation_csv(ablation)
         csv_denominators = CSVFormatter.format_denominators_csv(denominators)
+        csv_partition = CSVFormatter.format_partition_comparison_csv(partition)
 
         structured_data = {
             "batch_id": batch_id,
@@ -202,6 +244,11 @@ class BenchmarkReportGenerator:
                 "provider_summaries": {k: v.__dict__ for k, v in matrix.provider_summaries.items()},
             },
             "ablation": [r.__dict__ for r in ablation.rows],
+            "partition_comparison": {
+                "calibration_cases": partition.calibration_cases,
+                "heldout_cases": partition.heldout_cases,
+                "providers": [r.__dict__ for r in partition.rows],
+            },
         }
 
         return {
@@ -212,6 +259,54 @@ class BenchmarkReportGenerator:
                 "matrix": csv_matrix,
                 "ablation": csv_ablation,
                 "denominators": csv_denominators,
+                "partition": csv_partition,
             },
             "data": structured_data,
+        }
+
+    def export_to_directory(
+        self,
+        batch_id: str,
+        output_dir: Path | str,
+        title: Optional[str] = None,
+    ) -> dict[str, Path]:
+        """Generate and export full benchmark report files into target directory.
+
+        Creates:
+          - <batch_id>_report.md
+          - <batch_id>_report.json
+          - <batch_id>_matrix.csv
+          - <batch_id>_ablation.csv
+          - <batch_id>_denominators.csv
+          - <batch_id>_partition.csv
+        """
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        report = self.generate_full_report(batch_id, title=title or f"Proofline AI Review Benchmark ({batch_id})")
+
+        md_file = out_path / f"{batch_id}_report.md"
+        md_file.write_text(report["markdown"], encoding="utf-8")
+
+        json_file = out_path / f"{batch_id}_report.json"
+        json_file.write_text(report["json"], encoding="utf-8")
+
+        csv_matrix = out_path / f"{batch_id}_matrix.csv"
+        csv_matrix.write_text(report["csv"]["matrix"], encoding="utf-8")
+
+        csv_ablation = out_path / f"{batch_id}_ablation.csv"
+        csv_ablation.write_text(report["csv"]["ablation"], encoding="utf-8")
+
+        csv_denom = out_path / f"{batch_id}_denominators.csv"
+        csv_denom.write_text(report["csv"]["denominators"], encoding="utf-8")
+
+        csv_part = out_path / f"{batch_id}_partition.csv"
+        csv_part.write_text(report["csv"]["partition"], encoding="utf-8")
+
+        return {
+            "markdown": md_file,
+            "json": json_file,
+            "matrix_csv": csv_matrix,
+            "ablation_csv": csv_ablation,
+            "denominators_csv": csv_denom,
+            "partition_csv": csv_part,
         }
