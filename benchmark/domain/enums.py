@@ -1,0 +1,40 @@
+"""Enumerations for the benchmark domain."""
+
+from enum import Enum
+
+
+class AttemptStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED"
+    CANCELLED = "CANCELLED"
+
+
+class ContextCondition(str, Enum):
+    CODE_ONLY = "CODE_ONLY"
+    CODE_AND_SNAPSHOT = "CODE_AND_SNAPSHOT"
+
+
+class AttemptType(str, Enum):
+    INITIAL = "INITIAL"
+    AUTOMATIC_RETRY = "AUTOMATIC_RETRY"
+    INTENTIONAL_REPEAT = "INTENTIONAL_REPEAT"
+
+
+class EvaluationClass(str, Enum):
+    TRUE_POSITIVE = "TRUE_POSITIVE"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
+    VALID_UNEXPECTED = "VALID_UNEXPECTED"
+    DUPLICATE = "DUPLICATE"
+
+
+class DefectCategory(str, Enum):
+    LOGIC_BUG = "LOGIC_BUG"
+    DEPLOYMENT_CONFLICT = "DEPLOYMENT_CONFLICT"
+    CONFIG_LIMIT = "CONFIG_LIMIT"
+    DATA_INTEGRITY = "DATA_INTEGRITY"
+    REGRESSION = "REGRESSION"
+    PERFORMANCE = "PERFORMANCE"
+    CONTRACT_CHANGE = "CONTRACT_CHANGE"
