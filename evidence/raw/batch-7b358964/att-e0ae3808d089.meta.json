@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-e0ae3808d089",
+  "attempt_id": "att-e0ae3808d089",
+  "batch_id": "batch-7b358964",
+  "provider_id": "claude-web",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "claude-3-5-sonnet",
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "duration_ms": 0,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-20T19:21:19.789904+00:00"
+}

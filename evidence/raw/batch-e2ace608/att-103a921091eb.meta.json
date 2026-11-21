@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-103a921091eb",
+  "attempt_id": "att-103a921091eb",
+  "batch_id": "batch-e2ace608",
+  "provider_id": "chatgpt-web",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "manual-v1",
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "duration_ms": 0,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-20T19:23:50.496685+00:00"
+}

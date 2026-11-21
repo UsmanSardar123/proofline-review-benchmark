@@ -37,6 +37,7 @@ from benchmark.providers.base import (
     BaseProviderAdapter,
     ProviderFatalError,
     ProviderQuotaError,
+    ProviderRawResult,
     ProviderTransportError,
     ReviewContext,
 )
@@ -502,3 +503,112 @@ class BenchmarkOrchestrator:
     def export_report(self, batch_id: str, output_dir: Path | str, title: Optional[str] = None) -> dict[str, Path]:
         """Generate and export full benchmark report files into target directory."""
         return self.report_generator.export_to_directory(batch_id, output_dir, title=title)
+
+    def ingest_review(
+        self,
+        attempt_id: str,
+        raw_content: str,
+        model_name: Optional[str] = None,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+        duration_ms: Optional[int] = None,
+        overwrite: bool = False,
+    ) -> tuple[ReviewAttempt, "AttemptScore"]:
+        """Ingest a manual or external review response for an attempt and execute scoring."""
+        attempt = self.attempt_repo.get_by_id(attempt_id)
+        if not attempt:
+            raise ValueError(f"Attempt not found: {attempt_id}")
+
+        if attempt.status == AttemptStatus.COMPLETED and not overwrite:
+            raise ValueError(
+                f"Attempt '{attempt_id}' is already COMPLETED. Use overwrite=True to re-ingest."
+            )
+
+        if not raw_content or not raw_content.strip():
+            raise ValueError("Review content cannot be empty.")
+
+        if overwrite:
+            # Clean up prior response, findings, evaluations, and scores for this attempt
+            self.db.execute(
+                "DELETE FROM finding_evaluations WHERE finding_id IN (SELECT id FROM review_findings WHERE attempt_id = ?)",
+                (attempt.id,),
+            )
+            self.db.execute(
+                "DELETE FROM review_findings WHERE attempt_id = ?",
+                (attempt.id,),
+            )
+            self.db.execute("DELETE FROM attempt_scores WHERE attempt_id = ?", (attempt.id,))
+            self.db.execute("DELETE FROM review_responses WHERE attempt_id = ?", (attempt.id,))
+
+        # Ensure ground truth is seeded for this case
+        self.scoring_service.seed_ground_truths([attempt.case_id])
+
+        # Transition to RUNNING
+        start_ts = datetime.now(timezone.utc).isoformat()
+        self.attempt_repo.mark_running(attempt.id, started_at=start_ts)
+        self.event_repo.log(
+            RunEvent(
+                batch_id=attempt.batch_id,
+                attempt_id=attempt.id,
+                event_type="STATE_TRANSITION",
+                from_state=attempt.status.value,
+                to_state=AttemptStatus.RUNNING.value,
+                message=f"Manual review response submitted for ingestion ({len(raw_content)} chars)",
+            )
+        )
+
+        effective_model = model_name or attempt.model_name
+        result = ProviderRawResult(
+            raw_content=raw_content.strip(),
+            http_status=200,
+            prompt_tokens=prompt_tokens or 0,
+            completion_tokens=completion_tokens or 0,
+            duration_ms=duration_ms or 0,
+            model_name=effective_model,
+        )
+
+        # Collect and persist raw response and filesystem mirror
+        self.collector.collect(attempt, result)
+
+        # Transition to COMPLETED
+        comp_ts = datetime.now(timezone.utc).isoformat()
+        self.attempt_repo.mark_completed(
+            attempt.id,
+            completed_at=comp_ts,
+            duration_ms=duration_ms or 0,
+        )
+
+        if model_name:
+            self.db.execute(
+                "UPDATE review_attempts SET model_name = ? WHERE id = ?",
+                (model_name, attempt.id),
+            )
+
+        self.event_repo.log(
+            RunEvent(
+                batch_id=attempt.batch_id,
+                attempt_id=attempt.id,
+                event_type="STATE_TRANSITION",
+                from_state=AttemptStatus.RUNNING.value,
+                to_state=AttemptStatus.COMPLETED.value,
+                message=f"Manual review ingested and marked completed (model: {effective_model})",
+            )
+        )
+
+        # Extract findings and evaluate score
+        resp = self.response_repo.get_by_attempt_id(attempt.id)
+        if resp:
+            findings = self.extractor.extract_findings(resp)
+            self.finding_repo.save_all(findings)
+
+        score = self.scoring_service.evaluate_attempt(attempt.id)
+
+        # Update batch completion status if all attempts are finished
+        all_attempts = self.attempt_repo.list_for_batch(attempt.batch_id)
+        pending = sum(1 for a in all_attempts if a.status == AttemptStatus.PENDING)
+        running = sum(1 for a in all_attempts if a.status == AttemptStatus.RUNNING)
+        if pending == 0 and running == 0:
+            self.batch_repo.update_status(attempt.batch_id, "completed", datetime.now(timezone.utc).isoformat())
+
+        self.db.commit()
+        return self.attempt_repo.get_by_id(attempt.id), score

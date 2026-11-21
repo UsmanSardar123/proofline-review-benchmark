@@ -13,6 +13,8 @@ from benchmark.providers.base import (
     ReviewContext,
 )
 from benchmark.providers.coderabbit import CodeRabbitAdapter, CodeRabbitConfig
+from benchmark.providers.greptile import GreptileAdapter, GreptileConfig
+from benchmark.providers.manual import ManualProviderAdapter
 from benchmark.providers.mock import MockProviderAdapter
 from benchmark.providers.openai import OpenAIAdapter, OpenAIConfig
 from benchmark.providers.registry import ProviderRegistry
@@ -23,6 +25,9 @@ __all__ = [
     "BaseProviderAdapter",
     "CodeRabbitAdapter",
     "CodeRabbitConfig",
+    "GreptileAdapter",
+    "GreptileConfig",
+    "ManualProviderAdapter",
     "MockProviderAdapter",
     "OpenAIAdapter",
     "OpenAIConfig",

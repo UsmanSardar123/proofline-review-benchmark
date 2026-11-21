@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-a980e562fc64",
+  "attempt_id": "att-a980e562fc64",
+  "batch_id": "batch-e8b0d5e6",
+  "provider_id": "chatgpt-web",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "gpt-4o",
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "duration_ms": 0,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-20T19:23:51.094388+00:00"
+}

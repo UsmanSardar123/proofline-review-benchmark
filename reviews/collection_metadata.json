@@ -1,0 +1,93 @@
+{
+  "batch_id": "batch-7b358964",
+  "experiment_id": "zero-cost-eval",
+  "collected_at": "2026-11-20T19:14:00Z",
+  "responses": [
+    {
+      "provider": "claude-web",
+      "model": "claude-3-5-sonnet",
+      "case_id": "case-01",
+      "attempt_id": "att-e0ae3808d089",
+      "collected_at": "2026-11-20T19:14:00Z",
+      "prompt_file": "prompts/case01.md",
+      "context_hash": "3c396554298d5734",
+      "raw_response_file": "reviews/claude_case01.md",
+      "status": "COMPLETED",
+      "error": null,
+      "metrics": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "vuf": 2,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    {
+      "provider": "chatgpt-web",
+      "model": "gpt-4o",
+      "case_id": "case-01",
+      "attempt_id": "att-c0ff417e95fb",
+      "collected_at": null,
+      "prompt_file": "prompts/case01.md",
+      "context_hash": "3c396554298d5734",
+      "raw_response_file": "reviews/chatgpt_case01.md",
+      "status": "PENDING",
+      "error": "Contaminated response removed; reset to PENDING. Awaiting genuine ChatGPT (GPT-4o) review paste.",
+      "metrics": null
+    },
+    {
+      "provider": "chatgpt-web",
+      "model": "gpt-4o",
+      "case_id": "case-02",
+      "attempt_id": "att-0ba1cc2f4b45",
+      "collected_at": null,
+      "prompt_file": "prompts/case02.md",
+      "context_hash": "f62ee99d211602aa",
+      "raw_response_file": "reviews/chatgpt_case02.md",
+      "status": "PENDING",
+      "error": "Contaminated response removed; reset to PENDING. Awaiting genuine ChatGPT (GPT-4o) review paste.",
+      "metrics": null
+    },
+    {
+      "provider": "claude-web",
+      "model": "claude-3-5-sonnet",
+      "case_id": "case-02",
+      "attempt_id": "att-2629b40a9666",
+      "collected_at": null,
+      "prompt_file": "prompts/case02.md",
+      "context_hash": "f62ee99d211602aa",
+      "raw_response_file": "reviews/claude_case02.md",
+      "status": "PENDING",
+      "error": "Contaminated response removed; reset to PENDING. Awaiting genuine ChatGPT (GPT-4o) review paste.",
+      "metrics": null
+    },
+    {
+      "provider": "chatgpt-web",
+      "model": "gpt-4o",
+      "case_id": "case-07",
+      "attempt_id": "att-cbe5400d576f",
+      "collected_at": null,
+      "prompt_file": "prompts/case07.md",
+      "context_hash": "2ea4a48ae701eb5b",
+      "raw_response_file": "reviews/chatgpt_case07.md",
+      "status": "PENDING",
+      "error": "Contaminated response removed; reset to PENDING. Awaiting genuine ChatGPT (GPT-4o) review paste.",
+      "metrics": null
+    },
+    {
+      "provider": "claude-web",
+      "model": "claude-3-5-sonnet",
+      "case_id": "case-07",
+      "attempt_id": "att-5bb0d7133dee",
+      "collected_at": null,
+      "prompt_file": "prompts/case07.md",
+      "context_hash": "2ea4a48ae701eb5b",
+      "raw_response_file": "reviews/claude_case07.md",
+      "status": "PENDING",
+      "error": "Contaminated response removed; reset to PENDING. Awaiting genuine ChatGPT (GPT-4o) review paste.",
+      "metrics": null
+    }
+  ]
+}

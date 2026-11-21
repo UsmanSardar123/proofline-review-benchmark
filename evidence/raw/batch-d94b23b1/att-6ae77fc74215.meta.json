@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-6ae77fc74215",
+  "attempt_id": "att-6ae77fc74215",
+  "batch_id": "batch-d94b23b1",
+  "provider_id": "chatgpt-web",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "gpt-4o-2024-11-20",
+  "prompt_tokens": 1250,
+  "completion_tokens": 450,
+  "duration_ms": 4200,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-21T14:16:38.596446+00:00"
+}

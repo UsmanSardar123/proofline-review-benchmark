@@ -6,10 +6,12 @@ from typing import Optional
 
 from benchmark.cli.commands import (
     cmd_calibrate,
+    cmd_ingest,
     cmd_init_db,
     cmd_list_batches,
     cmd_list_cases,
     cmd_list_providers,
+    cmd_prompt,
     cmd_report,
     cmd_resume,
     cmd_run,
@@ -127,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional report title",
     )
+    p_run.add_argument(
+        "--manual",
+        action="store_true",
+        help="Schedule batch for manual / web-imported review ingestion without immediate dispatch",
+    )
 
     # 6. resume
     p_resume = subparsers.add_parser(
@@ -223,6 +230,87 @@ def build_parser() -> argparse.ArgumentParser:
         help="Calibration profile to inspect (default: all)",
     )
 
+    # 10. prompt
+    p_prompt = subparsers.add_parser(
+        "prompt",
+        help="Generate and display or export standardized review prompt for a case",
+    )
+    p_prompt.add_argument(
+        "--case",
+        required=True,
+        help="Benchmark case number (1-8) or case ID (e.g. 1 or case-01)",
+    )
+    p_prompt.add_argument(
+        "--context",
+        choices=["code-only", "code-and-snapshot"],
+        default="code-only",
+        help="Context condition to format (default: code-only)",
+    )
+    p_prompt.add_argument(
+        "--output",
+        default=None,
+        help="Optional file path to write generated prompt to (defaults to stdout)",
+    )
+    p_prompt.add_argument(
+        "--instructions",
+        default=None,
+        help="Optional custom review instructions override",
+    )
+
+    # 11. ingest
+    p_ingest = subparsers.add_parser(
+        "ingest",
+        help="Import external or manual AI review response from Markdown file into an attempt",
+    )
+    p_ingest.add_argument(
+        "--batch-id",
+        required=True,
+        help="Identifier of the batch containing the target attempt",
+    )
+    p_ingest.add_argument(
+        "--provider",
+        required=True,
+        help="Provider identifier (e.g. chatgpt-web, claude-web, proofline, coderabbit)",
+    )
+    p_ingest.add_argument(
+        "--case",
+        required=True,
+        help="Benchmark case number (1-8) or case ID (e.g. 1 or case-01)",
+    )
+    p_ingest.add_argument(
+        "--file",
+        dest="file_path",
+        required=True,
+        help="Path to Markdown file containing the raw AI review response",
+    )
+    p_ingest.add_argument(
+        "--context",
+        choices=["code-only", "code-and-snapshot"],
+        default=None,
+        help="Context condition to target (optional if batch contains only one condition for this case)",
+    )
+    p_ingest.add_argument(
+        "--model",
+        default=None,
+        help="Optional model name override (e.g. gpt-4o, claude-3-5-sonnet)",
+    )
+    p_ingest.add_argument(
+        "--tokens",
+        default=None,
+        help="Optional token counts formatted as 'prompt,completion' integers",
+    )
+    p_ingest.add_argument(
+        "--duration-ms",
+        type=int,
+        default=None,
+        help="Optional review duration in milliseconds",
+    )
+    p_ingest.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite if target attempt is already marked COMPLETED",
+    )
+
     return parser
 
 
@@ -252,6 +340,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 calibration_profile=args.calibration_profile,
                 output_dir=args.output_dir,
                 title=args.title,
+                manual=args.manual,
                 db_path=args.db_path,
             )
         elif args.command == "resume":
@@ -282,6 +371,26 @@ def main(argv: Optional[list[str]] = None) -> int:
             return cmd_calibrate(
                 batch_id=args.batch_id,
                 profile_name=args.profile,
+                db_path=args.db_path,
+            )
+        elif args.command == "prompt":
+            return cmd_prompt(
+                case=args.case,
+                context=args.context,
+                output=args.output,
+                instructions=args.instructions,
+            )
+        elif args.command == "ingest":
+            return cmd_ingest(
+                batch_id=args.batch_id,
+                provider=args.provider,
+                case=args.case,
+                file_path=args.file_path,
+                context=args.context,
+                model=args.model,
+                tokens=args.tokens,
+                duration_ms=args.duration_ms,
+                force=args.force,
                 db_path=args.db_path,
             )
         else:

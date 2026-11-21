@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-9777563b5cd9",
+  "attempt_id": "att-9777563b5cd9",
+  "batch_id": "batch-3cee82d4",
+  "provider_id": "greptile",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "greptile-review-v2",
+  "prompt_tokens": 450,
+  "completion_tokens": 120,
+  "duration_ms": 130,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-21T14:17:11.593012+00:00"
+}

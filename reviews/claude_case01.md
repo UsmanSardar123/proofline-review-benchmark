@@ -1,0 +1,46 @@
+## Review for Case 01 (Page report history by scheduled time)
+
+**Target:** `reports.py`, lines ~44–49 (`history`)
+
+### Findings
+
+#### Bug 1: Rows skipped at page boundaries (data loss)
+- Cursor is now `scheduled_at` only. Filter is `scheduled_at < ?`.
+- `scheduled_at` isn’t unique. Many reports can share a timestamp (batch schedules, minute granularity).
+- If a page ends mid-group of ties, the remaining tied rows are never returned. Next page starts strictly below that timestamp.
+- Silent omission. Worse than an error.
+
+#### Bug 2: Sort key and cursor mismatch
+- Sort is `scheduled_at DESC, id DESC`. Cursor only carries the first key.
+- Keyset pagination needs the full sort tuple.
+
+### Recommended Fix
+- Cursor must encode both `(scheduled_at, id)`.
+- Filter: `WHERE (scheduled_at, id) < (?, ?)`. Needs SQLite ≥ 3.15 for row values. Or portable form: `WHERE scheduled_at < ? OR (scheduled_at = ? AND id < ?)`.
+- `next_cursor = (rows[limit-1][2], rows[limit-1][0])`.
+- Keep it opaque: encode as base64 or JSON string.
+
+### Regression: Cursor contract change
+- Old cursor was an `id` integer. New one is a timestamp.
+- In-flight cursors from clients or the console (open tabs, bookmarked URLs, retries) will be misread during deploy. `id < ?` semantics differ entirely from `scheduled_at < ?`.
+- Comparing an int id against a timestamp column gives wrong or empty results, with no error.
+- Version the cursor, or reject old-format cursors explicitly.
+
+### Operational risk: Performance
+- Existing path used primary key order. Cheap.
+- New `ORDER BY scheduled_at DESC, id DESC` needs an index on `(scheduled_at, id)`.
+- Without it: full table scan and sort per page. Degrades as deliveries grows.
+- Ship the index migration before or with this change. Concurrent index creation if the DB supports it.
+
+### Data integrity edge cases
+- `scheduled_at NULL`: `NULL < ?` is never true. NULL rows vanish after page one. Sort position of NULLs also varies by DB. Define the behavior or exclude NULLs explicitly.
+- Mixed formats or timezones in `scheduled_at` (strings vs. UTC): lexical comparison breaks ordering. Confirm a single normalized format.
+- Rows scheduled in the future now sort first. Confirm that’s intended (“most recently scheduled” vs. “most recently delivered”).
+
+### Missing Tests
+- Many rows sharing one `scheduled_at` spanning a page boundary.
+- Exactly `limit` and `limit + 1` rows.
+- `NULL scheduled_at`.
+- Old-format cursor input.
+
+**Verdict:** Request changes. Bug 1 is a blocker.

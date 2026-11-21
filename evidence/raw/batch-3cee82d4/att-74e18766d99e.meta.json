@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-74e18766d99e",
+  "attempt_id": "att-74e18766d99e",
+  "batch_id": "batch-3cee82d4",
+  "provider_id": "coderabbit",
+  "case_id": "case-01",
+  "context_condition": "CODE_AND_SNAPSHOT",
+  "model_name": "coderabbit-review-v2",
+  "prompt_tokens": 420,
+  "completion_tokens": 110,
+  "duration_ms": 120,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-21T14:17:11.586977+00:00"
+}

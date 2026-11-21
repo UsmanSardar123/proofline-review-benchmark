@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
+from benchmark.cases.context import ContextManager
 from benchmark.cases.registry import CaseRegistry
 from benchmark.config import get_db_path
 from benchmark.db.connection import get_connection
@@ -82,9 +83,17 @@ def cmd_list_providers() -> int:
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
         "coderabbit": "CODERABBIT_API_KEY",
+        "greptile": "GREPTILE_API_KEY",
         "mock": None,
         "mock-reviewer": None,
+        "chatgpt-web": None,
+        "claude-web": None,
+        "proofline": None,
+        "greptile-web": None,
+        "manual": None,
     }
+
+    manual_providers = {"chatgpt-web", "claude-web", "proofline", "greptile-web", "manual"}
 
     print("\n" + "=" * 80)
     print(f"{'Provider ID':<16} {'Display Name':<28} {'Default Model':<20} {'Status'}")
@@ -99,7 +108,9 @@ def cmd_list_providers() -> int:
             model = "unknown"
 
         env_key = auth_env_keys.get(p_id)
-        if env_key is None:
+        if p_id in manual_providers:
+            status = "Ready (Zero-Cost Manual/Web Import)"
+        elif env_key is None:
             status = "Ready (Mock/Local)"
         elif os.environ.get(env_key):
             status = f"Ready (Live API Key: {env_key[:4]}...)"
@@ -147,6 +158,7 @@ def cmd_run(
     calibration_profile: str = "standard-v1",
     output_dir: Optional[str] = None,
     title: Optional[str] = None,
+    manual: bool = False,
     db_path: Optional[str] = None,
 ) -> int:
     """Schedule and execute a benchmark batch across specified cases and providers."""
@@ -245,6 +257,22 @@ def cmd_run(
         )
         print(f"\n[OK] Scheduled Batch ID: {batch.id} ({batch.planned_attempts_count} planned attempts)")
 
+        if manual:
+            conn.commit()
+            print("\n" + "=" * 70)
+            print("MANUAL EVALUATION BATCH SCHEDULED")
+            print("=" * 70)
+            print(f"Batch ID:          {batch.id}")
+            print(f"Planned Attempts:  {batch.planned_attempts_count}")
+            print(f"Status:            pending")
+            print("-" * 70)
+            print("Next steps to conduct zero-cost manual reviews:")
+            print(f"1. Generate prompt:  python -m benchmark prompt --case <N> --context <context>")
+            print(f"2. Feed to model:    Paste into ChatGPT, Claude.ai, or Proofline PR on GitHub")
+            print(f"3. Ingest response:  python -m benchmark ingest --batch-id {batch.id} --provider <provider> --case <N> --file <review.md>")
+            print("=" * 70 + "\n")
+            return 0
+
         # Run batch
         print("[RUNNING] Executing review attempts...")
         summary = orchestrator.run_batch(batch.id, dry_run=dry_run)
@@ -293,8 +321,13 @@ def cmd_resume(
         batch_repo = BatchRepository(conn)
         batch = batch_repo.get_by_id(batch_id)
         if not batch:
-            print(f"[ERROR] Batch ID '{batch_id}' not found.", file=sys.stderr)
-            return 1
+            by_exp = batch_repo.list_for_experiment(batch_id)
+            if by_exp:
+                batch = by_exp[0]
+                batch_id = batch.id
+            else:
+                print(f"[ERROR] Batch ID '{batch_id}' not found.", file=sys.stderr)
+                return 1
 
         orchestrator = BenchmarkOrchestrator(conn)
 
@@ -352,8 +385,13 @@ def cmd_report(
         batch_repo = BatchRepository(conn)
         batch = batch_repo.get_by_id(batch_id)
         if not batch:
-            print(f"[ERROR] Batch ID '{batch_id}' not found.", file=sys.stderr)
-            return 1
+            by_exp = batch_repo.list_for_experiment(batch_id)
+            if by_exp:
+                batch = by_exp[0]
+                batch_id = batch.id
+            else:
+                print(f"[ERROR] Batch ID '{batch_id}' not found.", file=sys.stderr)
+                return 1
 
         orchestrator = BenchmarkOrchestrator(conn)
         report = orchestrator.generate_report(batch_id, title=title)
@@ -580,3 +618,203 @@ def cmd_calibrate(
             conn.close()
 
     return 0
+
+
+def cmd_prompt(
+    case: int | str,
+    context: str = "code-only",
+    output: Optional[str] = None,
+    instructions: Optional[str] = None,
+) -> int:
+    """Generate and display or export the standardized review prompt for a case."""
+    try:
+        case_num = int(str(case).lower().replace("case-", ""))
+        if not (1 <= case_num <= 8):
+            raise ValueError(f"Case number out of range (1..8): {case_num}")
+    except ValueError as exc:
+        print(f"[ERROR] Invalid case '{case}': {exc}", file=sys.stderr)
+        return 1
+
+    ctx_arg = context.strip().lower()
+    if ctx_arg in ("code-and-snapshot", "code_and_snapshot", "snapshot"):
+        cond = ContextCondition.CODE_AND_SNAPSHOT
+    elif ctx_arg in ("code-only", "code_only"):
+        cond = ContextCondition.CODE_ONLY
+    else:
+        print(f"[ERROR] Invalid context '{context}'. Must be 'code-only' or 'code-and-snapshot'.", file=sys.stderr)
+        return 1
+
+    try:
+        ctx_mgr = ContextManager()
+        review_context = ctx_mgr.build_context(case_num, cond)
+        prompt_text = ContextManager.format_review_prompt(review_context, custom_instructions=instructions)
+
+        if output:
+            out_file = Path(output)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(prompt_text, encoding="utf-8")
+            print(f"[OK] Generated review prompt for Case {case_num:02d} ({cond.value}) -> {out_file.resolve()}")
+            print(f"     Prompt size: {len(prompt_text)} characters, Context Hash: {review_context.context_hash[:16]}")
+        else:
+            print(prompt_text)
+
+        return 0
+    except Exception as exc:
+        print(f"[FATAL] Failed to generate review prompt: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_ingest(
+    batch_id: str,
+    provider: str,
+    case: int | str,
+    file_path: str,
+    context: Optional[str] = None,
+    model: Optional[str] = None,
+    tokens: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    force: bool = False,
+    db_path: Optional[str] = None,
+) -> int:
+    """Ingest a manual review response from file into a scheduled benchmark attempt."""
+    # 1. Validate file
+    review_file = Path(file_path)
+    if not review_file.is_file():
+        print(f"[ERROR] Review file not found: {file_path}", file=sys.stderr)
+        return 1
+
+    try:
+        raw_content = review_file.read_text(encoding="utf-8")
+    except Exception as exc:
+        print(f"[ERROR] Failed to read review file '{file_path}': {exc}", file=sys.stderr)
+        return 1
+
+    if not raw_content or not raw_content.strip():
+        print(f"[ERROR] Review file '{file_path}' is empty.", file=sys.stderr)
+        return 1
+
+    # 2. Parse case number
+    try:
+        case_num = int(str(case).lower().replace("case-", ""))
+        target_case_id = f"case-{case_num:02d}"
+    except ValueError as exc:
+        print(f"[ERROR] Invalid case identifier '{case}': {exc}", file=sys.stderr)
+        return 1
+
+    # 3. Parse optional context condition
+    target_condition = None
+    if context:
+        ctx_lower = context.strip().lower()
+        if ctx_lower in ("code-and-snapshot", "code_and_snapshot", "snapshot"):
+            target_condition = ContextCondition.CODE_AND_SNAPSHOT
+        elif ctx_lower in ("code-only", "code_only"):
+            target_condition = ContextCondition.CODE_ONLY
+        else:
+            print(f"[ERROR] Invalid context condition '{context}'. Must be 'code-only' or 'code-and-snapshot'.", file=sys.stderr)
+            return 1
+
+    # 4. Parse optional tokens (prompt,completion)
+    prompt_tokens = None
+    completion_tokens = None
+    if tokens:
+        try:
+            tok_parts = [int(p.strip()) for p in tokens.split(",") if p.strip()]
+            if len(tok_parts) >= 1:
+                prompt_tokens = tok_parts[0]
+            if len(tok_parts) >= 2:
+                completion_tokens = tok_parts[1]
+        except ValueError:
+            print(f"[WARNING] Invalid --tokens format '{tokens}'. Expected 'prompt,completion' integers.", file=sys.stderr)
+
+    # 5. Connect and find matching attempt
+    conn = get_connection(db_path)
+    try:
+        migrate_benchmark_db(conn)
+        batch_repo = BatchRepository(conn)
+        att_repo = AttemptRepository(conn)
+
+        batch = batch_repo.get_by_id(batch_id)
+        if not batch:
+            by_exp = batch_repo.list_for_experiment(batch_id)
+            if by_exp:
+                batch = by_exp[0]
+                batch_id = batch.id
+            else:
+                print(f"[ERROR] Batch ID '{batch_id}' not found.", file=sys.stderr)
+                return 1
+
+        attempts = att_repo.list_for_batch(batch_id)
+        matching = [
+            a for a in attempts
+            if a.provider_id.lower() == provider.lower() and a.case_id == target_case_id
+        ]
+
+        if target_condition:
+            matching = [a for a in matching if a.context_condition == target_condition]
+
+        if not matching:
+            cond_str = f" with context '{target_condition.value}'" if target_condition else ""
+            print(
+                f"[ERROR] No attempt found for Batch '{batch_id}', Provider '{provider}', Case '{target_case_id}'{cond_str}.",
+                file=sys.stderr,
+            )
+            return 1
+
+        if len(matching) > 1:
+            print(
+                f"[ERROR] Multiple ({len(matching)}) matching attempts found for Case {target_case_id}. "
+                f"Please specify --context {{code-only,code-and-snapshot}} to disambiguate.",
+                file=sys.stderr,
+            )
+            return 1
+
+        target_attempt = matching[0]
+
+        # Check duplicate
+        if target_attempt.status == AttemptStatus.COMPLETED and not force:
+            print(
+                f"[ERROR] Attempt '{target_attempt.id}' is already COMPLETED. "
+                f"Use --force to overwrite and re-ingest.",
+                file=sys.stderr,
+            )
+            return 1
+
+        orchestrator = BenchmarkOrchestrator(conn)
+        updated_att, score = orchestrator.ingest_review(
+            attempt_id=target_attempt.id,
+            raw_content=raw_content,
+            model_name=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            duration_ms=duration_ms,
+            overwrite=force,
+        )
+
+        print("\n" + "=" * 80)
+        print("MANUAL REVIEW INGESTION & SCORING SUCCESS")
+        print("=" * 80)
+        print(f"Batch ID:          {batch_id}")
+        print(f"Attempt ID:        {updated_att.id}")
+        print(f"Provider:          {updated_att.provider_id}")
+        print(f"Model:             {updated_att.model_name}")
+        print(f"Case:              {updated_att.case_id}")
+        print(f"Context Condition: {updated_att.context_condition.value}")
+        print(f"Status:            {updated_att.status.value}")
+        print(f"Review Length:     {len(raw_content)} characters (from {review_file.name})")
+        print("-" * 80)
+        print("EVALUATION & SCORING RESULT:")
+        print(f"  True Positives (TP):     {score.tp_count}")
+        print(f"  False Positives (FP):    {score.fp_count}")
+        print(f"  False Negatives (FN):    {score.fn_count}")
+        print(f"  Valid Unexpected (VUF):  {score.vuf_count}")
+        print(f"  Precision:               {score.precision_rate:.4f}")
+        print(f"  Recall:                  {score.recall_rate:.4f}")
+        print(f"  F1 Score:                {score.f1_metric:.4f}")
+        print(f"  Clean Pass:              {'YES' if score.passed_cleanly else 'NO'}")
+        print("=" * 80 + "\n")
+        return 0
+    except Exception as exc:
+        print(f"[FATAL] Ingestion failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        conn.close()

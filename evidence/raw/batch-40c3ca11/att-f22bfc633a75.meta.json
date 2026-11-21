@@ -1,0 +1,15 @@
+{
+  "response_id": "resp-att-f22bfc633a75",
+  "attempt_id": "att-f22bfc633a75",
+  "batch_id": "batch-40c3ca11",
+  "provider_id": "mock",
+  "case_id": "case-01",
+  "context_condition": "CODE_ONLY",
+  "model_name": "mock-model-v1",
+  "prompt_tokens": 250,
+  "completion_tokens": 60,
+  "duration_ms": 45,
+  "http_status": 200,
+  "finish_reason": null,
+  "received_at": "2026-11-21T14:14:16.712957+00:00"
+}

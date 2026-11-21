@@ -2,10 +2,12 @@
 
 from benchmark.cli.commands import (
     cmd_calibrate,
+    cmd_ingest,
     cmd_init_db,
     cmd_list_batches,
     cmd_list_cases,
     cmd_list_providers,
+    cmd_prompt,
     cmd_report,
     cmd_resume,
     cmd_run,
@@ -25,4 +27,6 @@ __all__ = [
     "cmd_report",
     "cmd_show_attempt",
     "cmd_calibrate",
+    "cmd_prompt",
+    "cmd_ingest",
 ]
