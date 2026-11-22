@@ -35,6 +35,9 @@ def get_cases_dir() -> Path:
 
 def get_evidence_dir() -> Path:
     """Return the root directory for saving raw review response evidence."""
+    override = os.environ.get("BENCHMARK_EVIDENCE_DIR")
+    if override:
+        return Path(override)
     return DEFAULT_EVIDENCE_DIR
 
 

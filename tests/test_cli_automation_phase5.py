@@ -3,6 +3,7 @@
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -171,9 +172,11 @@ class CLIExecutionAndAutomationTests(unittest.TestCase):
         self.db_path = str(Path(self.tmp_dir.name) / "test_benchmark.sqlite")
         self.reports_dir = Path(self.tmp_dir.name) / "reports"
         self.reports_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["BENCHMARK_EVIDENCE_DIR"] = str(Path(self.tmp_dir.name) / "evidence")
 
     def tearDown(self):
         self.tmp_dir.cleanup()
+        os.environ.pop("BENCHMARK_EVIDENCE_DIR", None)
 
     def test_init_db_creates_and_migrates_schema(self):
         buf = StringIO()

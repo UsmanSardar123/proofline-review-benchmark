@@ -21,3 +21,6 @@ jobs:
         run: |
           python3 aws/deploy.py package --output "$RUNNER_TEMP/report-stack.json"
           python3 aws/deploy.py smoke --template "$RUNNER_TEMP/report-stack.json"
+      - name: Run benchmark test suite
+        run: |
+          python3 -m unittest discover tests

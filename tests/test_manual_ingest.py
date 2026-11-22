@@ -27,6 +27,7 @@ class TestPromptGeneration(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
+        os.environ.pop("BENCHMARK_EVIDENCE_DIR", None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_prompt_stdout_valid_case(self):
@@ -90,6 +91,7 @@ class TestManualBatchScheduling(unittest.TestCase):
         self.db_path = os.path.join(self.temp_dir, "test_manual.sqlite")
 
     def tearDown(self):
+        os.environ.pop("BENCHMARK_EVIDENCE_DIR", None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_manual_run_creates_pending_attempts(self):
@@ -131,6 +133,7 @@ class TestReviewIngestion(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, "test_ingest.sqlite")
         self.batch_id = "batch-ingest-test"
+        os.environ["BENCHMARK_EVIDENCE_DIR"] = os.path.join(self.temp_dir, "evidence")
 
         # Initialize and schedule a manual batch with 1 attempt
         cmd_run(
@@ -145,6 +148,7 @@ class TestReviewIngestion(unittest.TestCase):
         )
 
     def tearDown(self):
+        os.environ.pop("BENCHMARK_EVIDENCE_DIR", None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _get_scheduled_batch_id(self) -> str:

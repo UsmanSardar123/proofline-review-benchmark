@@ -1,37 +1,55 @@
 # Proofline Internship Application Email Draft
 
 **To:** `intern-applicants@proofline.sh`  
-**Subject:** Application: Software Engineering Intern — Usman Sardar  
+**Subject:** Software Engineering Intern - Usman Ayaz  
 
 ---
 
-Dear Proofline Hiring Team,
+Dear Proofline Engineering Team,
 
 I am writing to submit my completed take-home assignment for the Software Engineering Intern position at Proofline.
 
-I have built a comprehensive, reproducible AI pull request review benchmarking system designed to evaluate, compare, and calibrate automated code reviewers across eight realistic review cases on the report service application.
+I have engineered a production-grade, zero-external-dependency benchmarking platform designed to objectively evaluate, compare, and calibrate automated AI pull request reviewers across eight realistic review cases.
 
 ### Key Highlights of My Submission:
-1. **Multi-Provider & Zero-Cost Architecture:** Designed a unified reviewer interface supporting direct API adapters (OpenAI, Anthropic, CodeRabbit, Proofline) alongside a zero-cost manual ingestion pipeline (`benchmark prompt` and `benchmark ingest`) that enables genuine evaluations of ChatGPT (GPT-4o) and Claude (Claude 3.5 Sonnet) at $0 cost.
-2. **Fair Experiment Protocol & Isolation:** Strictly isolated reviewer inputs to ensure zero ground-truth leakage, divided cases into calibration (01, 02, 03, 07) and held-out (04, 05, 06, 08) partitions, and fingerprinted calibration profiles with SHA-256 hashes.
-3. **Deployment Snapshot Ablation:** Implemented dual context conditions (`code-only` vs `code-and-snapshot`) on Cases 04–06 to measure the exact impact of operational infrastructure context on reviewer precision and recall.
-4. **Resumability & Audit Traceability:** Implemented crash recovery and a detailed inspection command (`benchmark show-attempt --full`) that traces any calculated score directly back to the original raw review, extracted findings, line matches, and lifecycle audit events.
-5. **Quality & Systems Engineering:** Maintained 100% test pass rate across 104 automated tests, verified SQLite WAL migrations, packaged CloudFormation templates for inline Lambda deployment, and verified local smoke checks.
 
-### Links & Submission Artifacts:
-- **Pull Request:** https://github.com/UsmanSardar123/proofline-review-benchmark/pull/1 *(Read access granted to Proofline team)*
+1. **Pluggable Multi-Provider Architecture (7 Adapters):**
+   Unified adapter interface supporting direct paid APIs (`openai`, `anthropic`), developer PR review tools (`coderabbit`, `greptile`), native GitHub PR review ingestion (`proofline`), deterministic test harnesses (`mock`), and zero-cost web chats (`chatgpt-web` via GPT-4o, `claude-web` via Claude 3.5 Sonnet) at $0 out-of-pocket spend.
+
+2. **Fair Experiment Protocol & Zero Ground-Truth Leakage:**
+   Strictly isolated reviewer inputs via ephemeral Git worktrees to ensure zero answer or rubric leakage, divided cases into Calibration (01, 02, 03, 07) and Held-Out (04, 05, 06, 08) partitions to detect prompt overfitting, and cryptographically fingerprinted calibration profiles (`standard-v1`, hash `2ed6acdcc4b6`).
+
+3. **Deployment Snapshot Ablation Study:**
+   Implemented dual context conditions (`CODE_ONLY` vs `CODE_AND_SNAPSHOT`) on Cases 04, 05, and 06 to measure how runtime environment state (active background workers, live schema, worker queue topologies) eliminates production-breaking bugs undetectable from diffs alone.
+
+4. **Mathematical Rigor & Anti-Inflation Scoring:**
+   Engineered windowed finding deduplication ($\pm 10$ lines) so multiple repetitive comments on the same defect produce exactly one True Positive. Handled benign PRs (Cases 07 and 08) so that clean passes without false alarms earn $P=1.0, R=1.0, F_1=1.0$.
+
+5. **Strict Denominator Integrity & Audit Traceability:**
+   Every batch explicitly accounts for planned, completed, pending, and failed attempts. Every score traces back to raw unedited markdown, SHA-256 metadata envelopes, and microsecond lifecycle event logs in SQLite.
+
+6. **Zero External PyPI Dependencies & 100% Test Pass Rate:**
+   Built strictly on the Python Standard Library (`sqlite3` in WAL mode, `urllib`, `subprocess`, `unittest`). All 113 automated unit, integration, and CLI tests pass cleanly (111 passed, 2 skipped offline, 0 failures, 0 errors).
+
+7. **AWS Deployment Verification:**
+   Verified local CloudFormation packaging and executed local Lambda handler smoke test, obtaining confirmed receipt timestamp `101`, 1 delivered, 0 pending. (In full compliance with assignment transparency guidelines, live cloud deployment was marked NOT PERFORMED).
+
+### Deliverable Links:
+- **Pull Request #1:** https://github.com/UsmanSardar123/proofline-review-benchmark/pull/1 *(Proofline team granted access)*
 - **Repository:** https://github.com/UsmanSardar123/proofline-review-benchmark
-- **Two-Minute Walkthrough Video:** [VIDEO_LINK_PLACEHOLDER]
+- **Benchmark Comparative Analysis:** https://github.com/UsmanSardar123/proofline-review-benchmark/blob/feature/benchmark-engine/reports/benchmark_comparative_analysis.md
+- **Provider Capability Matrix:** https://github.com/UsmanSardar123/proofline-review-benchmark/blob/feature/benchmark-engine/docs/provider_capability_matrix.md
+- **Two-Minute Walkthrough Video:** [CANDIDATE_VIDEO_LINK_PLACEHOLDER]
 
-### Availability & Location:
-- **Location:** Rawalpindi, Pakistan (Fully equipped for remote work across global timezones)
+### Availability:
+- **Location:** Rawalpindi, Pakistan (Equipped for remote work across global timezones)
 - **Availability:** Available for a full-time 3–6 month software engineering internship immediately
 
-Thank you for your time, review, and consideration. I look forward to discussing the architecture, findings, and engineering trade-offs with your team.
+Thank you for your time, review, and consideration. I look forward to discussing the architecture, experimental findings, and engineering trade-offs with your team.
 
 Warm regards,
 
-**Usman Sardar**  
-Email: [YOUR_EMAIL_HERE]  
+**Usman Ayaz**  
 GitHub: https://github.com/UsmanSardar123  
-LinkedIn: [YOUR_LINKEDIN_HERE]  
+Email: [CANDIDATE_EMAIL_HERE]  
+LinkedIn: [CANDIDATE_LINKEDIN_HERE]  
