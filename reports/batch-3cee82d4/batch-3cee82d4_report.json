@@ -1,0 +1,116 @@
+{
+  "batch_id": "batch-3cee82d4",
+  "title": "Proofline AI Review Benchmark (batch-3cee82d4)",
+  "denominators": {
+    "batch_id": "batch-3cee82d4",
+    "planned_total": 4,
+    "completed_total": 4,
+    "quota_halted_total": 0,
+    "failed_total": 0,
+    "pending_total": 0,
+    "completion_rate_pct": 100.0,
+    "providers": {
+      "coderabbit": {
+        "provider_id": "coderabbit",
+        "planned": 2,
+        "completed": 2,
+        "quota_halted": 0,
+        "failed": 0,
+        "pending": 0,
+        "completion_rate_pct": 100.0
+      },
+      "greptile": {
+        "provider_id": "greptile",
+        "planned": 2,
+        "completed": 2,
+        "quota_halted": 0,
+        "failed": 0,
+        "pending": 0,
+        "completion_rate_pct": 100.0
+      }
+    }
+  },
+  "matrix": {
+    "providers": [
+      "coderabbit",
+      "greptile"
+    ],
+    "cases": [
+      "case-01@code",
+      "case-01@snap"
+    ],
+    "provider_summaries": {
+      "coderabbit": {
+        "provider_id": "coderabbit",
+        "total_planned": 2,
+        "completed": 2,
+        "tp_count": 0,
+        "fp_count": 0,
+        "fn_count": 2,
+        "clean_passes": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "mean_duration_ms": 120.0,
+        "synthetic_completed": 2
+      },
+      "greptile": {
+        "provider_id": "greptile",
+        "total_planned": 2,
+        "completed": 2,
+        "tp_count": 0,
+        "fp_count": 0,
+        "fn_count": 2,
+        "clean_passes": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "mean_duration_ms": 130.0,
+        "synthetic_completed": 2
+      }
+    }
+  },
+  "ablation": [],
+  "partition_comparison": {
+    "calibration_cases": [
+      "case-01",
+      "case-02",
+      "case-03",
+      "case-07"
+    ],
+    "heldout_cases": [
+      "case-04",
+      "case-05",
+      "case-06",
+      "case-08"
+    ],
+    "providers": [
+      {
+        "provider_id": "coderabbit",
+        "calibration_cases_count": 2,
+        "heldout_cases_count": 0,
+        "calibration_f1": 0.0,
+        "heldout_f1": 0.0,
+        "f1_delta": 0.0,
+        "missed_cases": [
+          "case-01"
+        ],
+        "spurious_cases": [],
+        "is_overfitted": false
+      },
+      {
+        "provider_id": "greptile",
+        "calibration_cases_count": 2,
+        "heldout_cases_count": 0,
+        "calibration_f1": 0.0,
+        "heldout_f1": 0.0,
+        "f1_delta": 0.0,
+        "missed_cases": [
+          "case-01"
+        ],
+        "spurious_cases": [],
+        "is_overfitted": false
+      }
+    ]
+  }
+}

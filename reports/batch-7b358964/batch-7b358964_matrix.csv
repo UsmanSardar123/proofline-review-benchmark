@@ -1,3 +1,3 @@
 provider,case-01,case-02,case-07,precision,recall,f1_score,completed,planned
-chatgpt-web,PENDING,PENDING,PENDING,0.0,0.0,0.0,0,3
+chatgpt-web,TRUE_POSITIVE:1.0,TRUE_POSITIVE:1.0,PENDING,1.0,1.0,1.0,2,3
 claude-web,TRUE_POSITIVE:1.0,PENDING,PENDING,1.0,1.0,1.0,1,3

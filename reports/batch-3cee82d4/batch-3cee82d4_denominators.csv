@@ -1,0 +1,4 @@
+provider_id,planned,completed,quota_halted,failed,pending,completion_rate_pct
+coderabbit,2,2,0,0,0,100.0
+greptile,2,2,0,0,0,100.0
+TOTAL,4,4,0,0,0,100.0

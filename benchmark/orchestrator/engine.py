@@ -174,7 +174,7 @@ class BenchmarkOrchestrator:
         self,
         attempt: ReviewAttempt,
         adapter: BaseProviderAdapter,
-        max_retries: int = 2,
+        max_retries: Optional[int] = None,
     ) -> ReviewAttempt:
         """Execute a single review attempt through its state transitions."""
         # Idempotency guard: do not re-run completed attempts
@@ -216,8 +216,9 @@ class BenchmarkOrchestrator:
             )
         )
 
+        retries_limit = max_retries if max_retries is not None else getattr(adapter.config, "max_retries", 2)
         retries_done = 0
-        while retries_done <= max_retries:
+        while retries_done <= retries_limit:
             t0 = time.perf_counter()
             try:
                 result = adapter.invoke_review(context)
@@ -225,6 +226,19 @@ class BenchmarkOrchestrator:
 
                 # Collect, normalize, and persist review response (DB and disk mirror)
                 self.collector.collect(attempt, result)
+                exec_mode = getattr(result, "execution_mode", "live") or "live"
+                if exec_mode != "live":
+                    self.event_repo.log(
+                        RunEvent(
+                            batch_id=attempt.batch_id,
+                            attempt_id=attempt.id,
+                            event_type="SYNTHETIC_RESULT",
+                            message=(
+                                f"{adapter.display_name} returned synthetic output "
+                                f"(execution_mode={exec_mode}); not a genuine external review"
+                            ),
+                        )
+                    )
 
                 # Transition: RUNNING -> COMPLETED
                 comp_ts = datetime.now(timezone.utc).isoformat()
@@ -268,7 +282,7 @@ class BenchmarkOrchestrator:
                 return self.attempt_repo.get_by_id(attempt.id)
 
             except ProviderTransportError as exc:
-                if retries_done < max_retries:
+                if retries_done < retries_limit:
                     retries_done += 1
                     self.attempt_repo.increment_retry(attempt.id)
                     self.event_repo.log(
@@ -276,7 +290,7 @@ class BenchmarkOrchestrator:
                             batch_id=attempt.batch_id,
                             attempt_id=attempt.id,
                             event_type="RETRY_ATTEMPTED",
-                            message=f"Transient transport failure (retry {retries_done}/{max_retries}): {exc}",
+                            message=f"Transient transport failure (retry {retries_done}/{retries_limit}): {exc}",
                         )
                     )
                     self.db.commit()
@@ -292,7 +306,7 @@ class BenchmarkOrchestrator:
                             event_type="STATE_TRANSITION",
                             from_state=AttemptStatus.RUNNING.value,
                             to_state=AttemptStatus.FAILED.value,
-                            message=f"Failed after {max_retries} retries: {exc}",
+                            message=f"Failed after {retries_limit} retries: {exc}",
                         )
                     )
                     self.db.commit()
@@ -565,6 +579,7 @@ class BenchmarkOrchestrator:
             completion_tokens=completion_tokens or 0,
             duration_ms=duration_ms or 0,
             model_name=effective_model,
+            execution_mode="live",
         )
 
         # Collect and persist raw response and filesystem mirror

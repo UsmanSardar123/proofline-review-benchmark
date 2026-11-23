@@ -115,6 +115,11 @@ class ReviewResponse:
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     received_at: str = field(default_factory=now_utc_iso)
+    execution_mode: str = "live"  # 'live' | 'fixture' | 'dry_run' | 'mock'
+
+    @property
+    def is_synthetic(self) -> bool:
+        return self.execution_mode != "live"
 
 
 @dataclass

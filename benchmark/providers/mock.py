@@ -62,4 +62,5 @@ class MockProviderAdapter(BaseProviderAdapter):
             completion_tokens=60,
             duration_ms=45,
             model_name=self.default_model,
+            execution_mode="mock",
         )

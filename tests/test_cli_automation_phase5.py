@@ -185,7 +185,7 @@ class CLIExecutionAndAutomationTests(unittest.TestCase):
         self.assertEqual(ret, 0)
         output = buf.getvalue()
         self.assertIn("[OK] Benchmark database initialized at:", output)
-        self.assertIn("Applied migrations: [1]", output)
+        self.assertIn("Applied migrations: [1, 2]", output)
 
         # Re-running init-db is idempotent
         buf2 = StringIO()

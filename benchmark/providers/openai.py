@@ -1,4 +1,4 @@
-"""OpenAI GPT-4o code-review provider adapter."""
+"""OpenAI GPT-6.1 Sol / GPT-4o code-review provider adapter."""
 
 from dataclasses import dataclass
 import json
@@ -42,11 +42,11 @@ class OpenAIConfig(ProviderConfig):
 
 
 class OpenAIAdapter(BaseProviderAdapter):
-    """Adapter for OpenAI models (e.g. gpt-4o, gpt-4o-mini, o1)."""
+    """Adapter for OpenAI models (e.g. gpt-6.1-sol, gpt-6-luna, gpt-4o)."""
 
     provider_id = "openai"
-    display_name = "OpenAI GPT-4o"
-    default_model = "gpt-4o"
+    display_name = "OpenAI GPT-6.1 Sol"
+    default_model = "gpt-6.1-sol"
 
     def __init__(self, config: Optional[OpenAIConfig] = None, **kwargs):
         cfg = config or OpenAIConfig(
@@ -175,4 +175,5 @@ class OpenAIAdapter(BaseProviderAdapter):
             duration_ms=60,
             model_name=self.default_model,
             finish_reason="stop",
+            execution_mode="dry_run",
         )

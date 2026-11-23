@@ -4,20 +4,20 @@
   "denominators": {
     "batch_id": "batch-7b358964",
     "planned_total": 6,
-    "completed_total": 1,
+    "completed_total": 3,
     "quota_halted_total": 0,
     "failed_total": 0,
-    "pending_total": 5,
-    "completion_rate_pct": 16.7,
+    "pending_total": 3,
+    "completion_rate_pct": 50.0,
     "providers": {
       "chatgpt-web": {
         "provider_id": "chatgpt-web",
         "planned": 3,
-        "completed": 0,
+        "completed": 2,
         "quota_halted": 0,
         "failed": 0,
-        "pending": 3,
-        "completion_rate_pct": 0.0
+        "pending": 1,
+        "completion_rate_pct": 66.7
       },
       "claude-web": {
         "provider_id": "claude-web",
@@ -44,15 +44,16 @@
       "chatgpt-web": {
         "provider_id": "chatgpt-web",
         "total_planned": 3,
-        "completed": 0,
-        "tp_count": 0,
+        "completed": 2,
+        "tp_count": 2,
         "fp_count": 0,
         "fn_count": 0,
-        "clean_passes": 0,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1_score": 0.0,
-        "mean_duration_ms": 0.0
+        "clean_passes": 2,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "mean_duration_ms": 0.0,
+        "synthetic_completed": 0
       },
       "claude-web": {
         "provider_id": "claude-web",
@@ -65,7 +66,8 @@
         "precision": 1.0,
         "recall": 1.0,
         "f1_score": 1.0,
-        "mean_duration_ms": 0.0
+        "mean_duration_ms": 0.0,
+        "synthetic_completed": 0
       }
     }
   },
@@ -86,11 +88,11 @@
     "providers": [
       {
         "provider_id": "chatgpt-web",
-        "calibration_cases_count": 0,
+        "calibration_cases_count": 2,
         "heldout_cases_count": 0,
-        "calibration_f1": 0.0,
+        "calibration_f1": 1.0,
         "heldout_f1": 0.0,
-        "f1_delta": 0.0,
+        "f1_delta": -1.0,
         "missed_cases": [],
         "spurious_cases": [],
         "is_overfitted": false
@@ -104,7 +106,7 @@
         "f1_delta": -1.0,
         "missed_cases": [],
         "spurious_cases": [],
-        "is_overfitted": true
+        "is_overfitted": false
       }
     ]
   }

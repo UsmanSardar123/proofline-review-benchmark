@@ -8,9 +8,9 @@
 
 | Provider | Planned | Completed | Quota Halted | Failed | Pending | Completion Rate |
 | --- | --- | --- | --- | --- | --- | --- |
-| chatgpt-web | 3 | 0 | 0 | 0 | 3 | 0.0% |
+| chatgpt-web | 3 | 2 | 0 | 0 | 1 | 66.7% |
 | claude-web | 3 | 1 | 0 | 0 | 2 | 33.3% |
-| **Total** | **6** | **1** | **0** | **0** | **5** | **16.7%** |
+| **Total** | **6** | **3** | **0** | **0** | **3** | **50.0%** |
 
 ## 2. Provider vs Case Comparison Matrix
 
@@ -18,10 +18,10 @@
 
 | Provider | case-01 | case-02 | case-07 | P | R | F1 | Passed |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| chatgpt-web | `PENDING` | `PENDING` | `PENDING` | 0.00 | 0.00 | 0.00 | 0 |
-| claude-web | ✓ TR (1.00) | `PENDING` | `PENDING` | 1.00 | 1.00 | 1.00 | 1 |
+| chatgpt-web | ✓ TP (1.00) | ✓ TP (1.00) | `PENDING` | 1.00 | 1.00 | 1.00 | 2 |
+| claude-web | ✓ TP (1.00) | `PENDING` | `PENDING` | 1.00 | 1.00 | 1.00 | 1 |
 
-*Legend: `✓ TP` = True Positive, `✓ CL` = Clean Pass on benign PR, `✗ FP` = False Positive, `✗ FN` = Missed Defect, `🔍` = Cited Deployment Evidence.*
+*Legend: `✓ TP` = True Positive, `✓ CL` = Clean Pass on benign PR, `✗ FP` = False Positive, `✗ FN` = Missed Defect, `✗ MX` = Mixed (TP and FP), `🔍` = Cited Deployment Evidence, `[FIXTURE]`/`[DRY_RUN]`/`[MOCK]` = synthetic output, NOT a genuine external review. Columns suffixed `@code`/`@snap` separate CODE_ONLY and CODE_AND_SNAPSHOT attempts.*
 
 ## 3. Deployment Context Ablation
 
@@ -39,5 +39,5 @@
 
 | Provider | Cal Cases | Held Cases | Cal F1 | Held F1 | Delta (Held - Cal) | Missed Cases | Overfit Alert |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| chatgpt-web | 0 | 0 | 0.00 | 0.00 | 0.00 | None | ✓ Generalizing |
-| claude-web | 1 | 0 | 1.00 | 0.00 | -1.00 | None | ⚠️ Overfitting Risk |
+| chatgpt-web | 2 | 0 | 1.00 | 0.00 | -1.00 | None | N/A (insufficient data) |
+| claude-web | 1 | 0 | 1.00 | 0.00 | -1.00 | None | N/A (insufficient data) |

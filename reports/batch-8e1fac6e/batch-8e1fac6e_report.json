@@ -1,0 +1,200 @@
+{
+  "batch_id": "batch-8e1fac6e",
+  "title": "Proofline AI Review Benchmark (batch-8e1fac6e)",
+  "denominators": {
+    "batch_id": "batch-8e1fac6e",
+    "planned_total": 10,
+    "completed_total": 0,
+    "quota_halted_total": 0,
+    "failed_total": 0,
+    "pending_total": 10,
+    "completion_rate_pct": 0.0,
+    "providers": {
+      "chatgpt-web": {
+        "provider_id": "chatgpt-web",
+        "planned": 5,
+        "completed": 0,
+        "quota_halted": 0,
+        "failed": 0,
+        "pending": 5,
+        "completion_rate_pct": 0.0
+      },
+      "claude-web": {
+        "provider_id": "claude-web",
+        "planned": 5,
+        "completed": 0,
+        "quota_halted": 0,
+        "failed": 0,
+        "pending": 5,
+        "completion_rate_pct": 0.0
+      }
+    }
+  },
+  "matrix": {
+    "providers": [
+      "chatgpt-web",
+      "claude-web"
+    ],
+    "cases": [
+      "case-03",
+      "case-04",
+      "case-05",
+      "case-06",
+      "case-08"
+    ],
+    "provider_summaries": {
+      "chatgpt-web": {
+        "provider_id": "chatgpt-web",
+        "total_planned": 5,
+        "completed": 0,
+        "tp_count": 0,
+        "fp_count": 0,
+        "fn_count": 0,
+        "clean_passes": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "mean_duration_ms": 0.0,
+        "synthetic_completed": 0
+      },
+      "claude-web": {
+        "provider_id": "claude-web",
+        "total_planned": 5,
+        "completed": 0,
+        "tp_count": 0,
+        "fp_count": 0,
+        "fn_count": 0,
+        "clean_passes": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "mean_duration_ms": 0.0,
+        "synthetic_completed": 0
+      }
+    }
+  },
+  "ablation": [
+    {
+      "provider_id": "chatgpt-web",
+      "case_id": "case-04",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    },
+    {
+      "provider_id": "chatgpt-web",
+      "case_id": "case-05",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    },
+    {
+      "provider_id": "chatgpt-web",
+      "case_id": "case-06",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    },
+    {
+      "provider_id": "claude-web",
+      "case_id": "case-04",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    },
+    {
+      "provider_id": "claude-web",
+      "case_id": "case-05",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    },
+    {
+      "provider_id": "claude-web",
+      "case_id": "case-06",
+      "code_only_status": "PENDING",
+      "code_only_f1": 0.0,
+      "code_only_detected": false,
+      "code_only_cites_evidence": false,
+      "snapshot_status": "NOT_RUN",
+      "snapshot_f1": 0.0,
+      "snapshot_detected": false,
+      "snapshot_cites_evidence": false,
+      "f1_delta": 0.0,
+      "evidence_gain": false
+    }
+  ],
+  "partition_comparison": {
+    "calibration_cases": [
+      "case-01",
+      "case-02",
+      "case-03",
+      "case-07"
+    ],
+    "heldout_cases": [
+      "case-04",
+      "case-05",
+      "case-06",
+      "case-08"
+    ],
+    "providers": [
+      {
+        "provider_id": "chatgpt-web",
+        "calibration_cases_count": 0,
+        "heldout_cases_count": 0,
+        "calibration_f1": 0.0,
+        "heldout_f1": 0.0,
+        "f1_delta": 0.0,
+        "missed_cases": [],
+        "spurious_cases": [],
+        "is_overfitted": false
+      },
+      {
+        "provider_id": "claude-web",
+        "calibration_cases_count": 0,
+        "heldout_cases_count": 0,
+        "calibration_f1": 0.0,
+        "heldout_f1": 0.0,
+        "f1_delta": 0.0,
+        "missed_cases": [],
+        "spurious_cases": [],
+        "is_overfitted": false
+      }
+    ]
+  }
+}

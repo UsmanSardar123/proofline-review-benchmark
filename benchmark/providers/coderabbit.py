@@ -8,6 +8,7 @@ Supports documented CodeRabbit integration methods:
 
 from dataclasses import dataclass, field
 import json
+import logging
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,6 +28,8 @@ from benchmark.providers.base import (
     ProviderTransportError,
     ReviewContext,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,8 +80,20 @@ class CodeRabbitAdapter(BaseProviderAdapter):
         if shutil.which(self.rabbit_config.cli_binary):
             return self._invoke_cli(context)
 
-        # In testing or offline environments without active subscription, fall back to fixture
-        return self._invoke_fixture(context)
+        # No credentials and no CLI: only fall back to a synthetic fixture when explicitly
+        # allowed (dry-run or allow_fixture_fallback). Never silently fabricate a review.
+        if self.rabbit_config.dry_run or self.rabbit_config.allow_fixture_fallback:
+            logger.warning(
+                "CodeRabbit: no %s and no '%s' CLI found; returning SYNTHETIC FIXTURE output "
+                "(execution_mode=fixture). This is NOT a genuine CodeRabbit review.",
+                self.rabbit_config.api_key_env_var, self.rabbit_config.cli_binary,
+            )
+            return self._invoke_fixture(context)
+
+        raise ProviderAuthenticationError(
+            f"CodeRabbit unavailable: set {self.rabbit_config.api_key_env_var}, install the "
+            f"'{self.rabbit_config.cli_binary}' CLI, or run with --dry-run to use synthetic fixtures."
+        )
 
     def _invoke_api(self, context: ReviewContext) -> ProviderRawResult:
         """Dispatch review request to CodeRabbit REST API."""
@@ -191,6 +206,7 @@ class CodeRabbitAdapter(BaseProviderAdapter):
             completion_tokens=110,
             duration_ms=120,
             model_name="coderabbit-review-v2",
+            execution_mode="fixture",
         )
 
 

@@ -1,6 +1,7 @@
 """Review response collection, normalization, and archival."""
 
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -40,18 +41,21 @@ class ReviewCollector:
 
         now_iso = datetime.now(timezone.utc).isoformat()
         response_id = f"resp-{attempt.id}"
+        content_clean = raw_text.strip()
+        content_hash = hashlib.sha256(content_clean.encode("utf-8")).hexdigest()
 
         # 1. Normalize domain response record
         response = ReviewResponse(
             id=response_id,
             attempt_id=attempt.id,
-            raw_content=raw_text.strip(),
+            raw_content=content_clean,
             content_format="markdown",
             external_id=result.external_id,
             http_status=result.http_status,
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
             received_at=now_iso,
+            execution_mode=getattr(result, "execution_mode", "live") or "live",
         )
 
         # 2. Persist in database
@@ -72,6 +76,9 @@ class ReviewCollector:
             "http_status": result.http_status,
             "finish_reason": result.finish_reason,
             "received_at": now_iso,
+            "content_hash_sha256": content_hash,
+            "execution_mode": response.execution_mode,
+            "is_synthetic": response.execution_mode != "live",
         }
         self.evidence_store.save_evidence(
             batch_id=attempt.batch_id,

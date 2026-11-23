@@ -4,6 +4,7 @@ from typing import Optional, Type
 
 from benchmark.providers.anthropic import AnthropicAdapter
 from benchmark.providers.base import BaseProviderAdapter, ProviderConfig
+from benchmark.providers.cloudflare import CloudflareAdapter
 from benchmark.providers.coderabbit import CodeRabbitAdapter
 from benchmark.providers.greptile import GreptileAdapter
 from benchmark.providers.manual import ManualProviderAdapter
@@ -23,6 +24,8 @@ class ProviderRegistry:
         self.register("coderabbit", CodeRabbitAdapter)
         self.register("anthropic", AnthropicAdapter)
         self.register("openai", OpenAIAdapter)
+        self.register("cloudflare", CloudflareAdapter)
+        self.register("cloudflare-ai", CloudflareAdapter)
         self.register("greptile", GreptileAdapter)
         # Register zero-cost manual & web-imported review adapters
         self.register("chatgpt-web", ManualProviderAdapter)

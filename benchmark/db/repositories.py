@@ -377,6 +377,11 @@ class AttemptRepository(BaseRepository):
         rows = self.db.execute(query, (batch_id,)).fetchall()
         return [self._row_to_attempt(r) for r in rows]
 
+    def list_all(self) -> list[ReviewAttempt]:
+        query = "SELECT * FROM review_attempts ORDER BY batch_id, case_id, provider_id, attempt_number"
+        rows = self.db.execute(query).fetchall()
+        return [self._row_to_attempt(r) for r in rows]
+
     def list_by_status(self, batch_id: str, statuses: list[AttemptStatus]) -> list[ReviewAttempt]:
         placeholders = ",".join("?" for _ in statuses)
         query = f"SELECT * FROM review_attempts WHERE batch_id = ? AND status IN ({placeholders}) ORDER BY created_at"
@@ -429,9 +434,9 @@ class ResponseRepository(BaseRepository):
         query = """
             INSERT INTO review_responses (
                 id, attempt_id, raw_content, content_format, external_id,
-                http_status, prompt_tokens, completion_tokens, received_at
+                http_status, prompt_tokens, completion_tokens, received_at, execution_mode
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         self.db.execute(
             query,
@@ -445,6 +450,7 @@ class ResponseRepository(BaseRepository):
                 response.prompt_tokens,
                 response.completion_tokens,
                 response.received_at,
+                response.execution_mode,
             ),
         )
         return response
@@ -464,6 +470,7 @@ class ResponseRepository(BaseRepository):
             prompt_tokens=row["prompt_tokens"],
             completion_tokens=row["completion_tokens"],
             received_at=row["received_at"],
+            execution_mode=row["execution_mode"] if "execution_mode" in row.keys() else "live",
         )
 
 

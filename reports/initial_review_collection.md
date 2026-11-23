@@ -32,8 +32,8 @@
 | Attempt ID | Case ID | Provider ID | Model Name | Response File | Collection Status | Ingestion Status | TP | FP | FN | F1 Score |
 | :--- | :---: | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | `att-e0ae3808d089` | `case-01` | `claude-web` | `claude-3-5-sonnet` | `reviews/claude_case01.md` | **COLLECTED** | **COMPLETED** | 1 | 0 | 0 | **1.0000** |
-| `att-c0ff417e95fb` | `case-01` | `chatgpt-web` | `gpt-4o` | `reviews/chatgpt_case01.md` | **PENDING** | PENDING | -- | -- | -- | -- |
-| `att-0ba1cc2f4b45` | `case-02` | `chatgpt-web` | `gpt-4o` | `reviews/chatgpt_case02.md` | **PENDING** | PENDING | -- | -- | -- | -- |
+| `att-c0ff417e95fb` | `case-01` | `chatgpt-web` | `GPT-6` | `reviews/case-01_chatgpt_response.md` | **COLLECTED** | **COMPLETED** | 1 | 0 | 0 | **1.0000** |
+| `att-0ba1cc2f4b45` | `case-02` | `chatgpt-web` | `GPT-6` | `reviews/case-02_chatgpt_response.md` | **COLLECTED** | **COMPLETED** | 1 | 0 | 0 | **1.0000** |
 | `att-2629b40a9666` | `case-02` | `claude-web` | `claude-3-5-sonnet` | `reviews/claude_case02.md` | **PENDING** | PENDING | -- | -- | -- | -- |
 | `att-cbe5400d576f` | `case-07` | `chatgpt-web` | `gpt-4o` | `reviews/chatgpt_case07.md` | **PENDING** | PENDING | -- | -- | -- | -- |
 | `att-5bb0d7133dee` | `case-07` | `claude-web` | `claude-3-5-sonnet` | `reviews/claude_case07.md` | **PENDING** | PENDING | -- | -- | -- | -- |

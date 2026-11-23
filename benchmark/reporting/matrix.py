@@ -11,6 +11,7 @@ from benchmark.db.repositories import (
     EvaluationRepository,
     FindingRepository,
     ProviderRepository,
+    ResponseRepository,
 )
 from benchmark.domain.enums import AttemptStatus, ContextCondition
 
@@ -25,6 +26,11 @@ class MatrixCell:
     duration_ms: Optional[int] = None
     findings_count: int = 0
     cites_evidence: bool = False
+    execution_mode: str = "live"
+
+    @property
+    def is_synthetic(self) -> bool:
+        return self.execution_mode != "live"
 
 
 @dataclass
@@ -40,6 +46,7 @@ class ProviderSummary:
     recall: float = 0.0
     f1_score: float = 0.0
     mean_duration_ms: float = 0.0
+    synthetic_completed: int = 0
 
 
 @dataclass
@@ -130,6 +137,7 @@ class BenchmarkMatrixGenerator:
         self.eval_repo = EvaluationRepository(db)
         self.case_repo = CaseRepository(db)
         self.prov_repo = ProviderRepository(db)
+        self.response_repo = ResponseRepository(db)
 
     def generate_provider_case_matrix(
         self,
@@ -142,7 +150,19 @@ class BenchmarkMatrixGenerator:
             attempts = [a for a in attempts if a.context_condition == context_condition]
 
         providers = sorted(list({a.provider_id for a in attempts}))
-        cases = sorted(list({a.case_id for a in attempts}))
+
+        # Column key: case_id alone when the batch uses a single context condition;
+        # otherwise (case_id, context) so CODE_ONLY and CODE_AND_SNAPSHOT attempts for
+        # the same provider/case no longer overwrite each other.
+        multi_context = len({a.context_condition for a in attempts}) > 1
+
+        def col_key(att) -> str:
+            if not multi_context:
+                return att.case_id
+            suffix = "snap" if att.context_condition == ContextCondition.CODE_AND_SNAPSHOT else "code"
+            return f"{att.case_id}@{suffix}"
+
+        cases = sorted(list({col_key(a) for a in attempts}))
 
         matrix: dict[str, dict[str, MatrixCell]] = {p: {} for p in providers}
         provider_stats: dict[str, dict[str, Any]] = {
@@ -154,13 +174,14 @@ class BenchmarkMatrixGenerator:
                 "fn": 0,
                 "clean_passes": 0,
                 "durations": [],
+                "synthetic": 0,
             }
             for p in providers
         }
 
         for att in attempts:
             p_id = att.provider_id
-            c_id = att.case_id
+            c_id = col_key(att)
             provider_stats[p_id]["total"] += 1
 
             if att.status != AttemptStatus.COMPLETED:
@@ -179,6 +200,10 @@ class BenchmarkMatrixGenerator:
             evals = self.eval_repo.list_for_attempt(att.id)
             findings = self.finding_repo.list_for_attempt(att.id)
             cites_evidence = any(e.cites_deployment_evidence for e in evals)
+            resp = self.response_repo.get_by_attempt_id(att.id)
+            exec_mode = resp.execution_mode if resp else "live"
+            if exec_mode != "live":
+                provider_stats[p_id]["synthetic"] += 1
 
             if score:
                 provider_stats[p_id]["tp"] += score.tp_count
@@ -207,6 +232,7 @@ class BenchmarkMatrixGenerator:
                     duration_ms=att.duration_ms,
                     findings_count=len(findings),
                     cites_evidence=cites_evidence,
+                    execution_mode=exec_mode,
                 )
             else:
                 matrix[p_id][c_id] = MatrixCell(
@@ -215,6 +241,7 @@ class BenchmarkMatrixGenerator:
                     duration_ms=att.duration_ms,
                     findings_count=len(findings),
                     cites_evidence=cites_evidence,
+                    execution_mode=exec_mode,
                 )
 
         # Compute provider summary rollups
@@ -241,6 +268,7 @@ class BenchmarkMatrixGenerator:
                 recall=round(rec, 4),
                 f1_score=round(f1, 4),
                 mean_duration_ms=round(mean_dur, 1),
+                synthetic_completed=st["synthetic"],
             )
 
         return ProviderCaseMatrix(
@@ -413,7 +441,9 @@ class BenchmarkMatrixGenerator:
             cal_f1 = cal_rollup["micro_f1"]
             held_f1 = held_rollup["micro_f1"]
             delta = round(held_f1 - cal_f1, 4)
-            is_overfitted = (cal_f1 - held_f1) > 0.25
+            is_overfitted = (
+                cal_rollup["count"] > 0 and held_rollup["count"] > 0 and (cal_f1 - held_f1) > 0.25
+            )
 
             rows.append(
                 PartitionComparisonRow(

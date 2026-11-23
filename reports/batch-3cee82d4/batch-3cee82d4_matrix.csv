@@ -1,0 +1,3 @@
+provider,case-01@code,case-01@snap,precision,recall,f1_score,completed,planned
+coderabbit,FALSE_NEGATIVE:0.0,FALSE_NEGATIVE:0.0,0.0,0.0,0.0,2,2
+greptile,FALSE_NEGATIVE:0.0,FALSE_NEGATIVE:0.0,0.0,0.0,0.0,2,2

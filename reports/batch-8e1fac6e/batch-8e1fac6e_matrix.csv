@@ -1,0 +1,3 @@
+provider,case-03,case-04,case-05,case-06,case-08,precision,recall,f1_score,completed,planned
+chatgpt-web,PENDING,PENDING,PENDING,PENDING,PENDING,0.0,0.0,0.0,0,5
+claude-web,PENDING,PENDING,PENDING,PENDING,PENDING,0.0,0.0,0.0,0,5

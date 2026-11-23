@@ -50,6 +50,9 @@ class ProviderConfig:
     max_tokens: int = 2048
     extra_headers: dict[str, str] = field(default_factory=dict)
     dry_run: bool = False
+    # When True, adapters in 'auto' mode may fall back to synthetic fixtures if no
+    # credentials/CLI are available. Default False: missing credentials raise.
+    allow_fixture_fallback: bool = False
 
 
 @dataclass
@@ -85,6 +88,9 @@ class ProviderRawResult:
     model_name: str = ""
     finish_reason: Optional[str] = None
     response_headers: dict = field(default_factory=dict)
+    # Provenance of the content: 'live' for genuine reviewer output; 'fixture',
+    # 'dry_run' or 'mock' for synthetic offline output.
+    execution_mode: str = "live"
 
 
 class BaseProviderAdapter(ABC):

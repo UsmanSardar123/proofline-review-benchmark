@@ -7,6 +7,7 @@ Supports documented Greptile integration methods:
 
 from dataclasses import dataclass
 import json
+import logging
 import time
 from typing import Optional
 import urllib.error
@@ -23,6 +24,8 @@ from benchmark.providers.base import (
     ProviderTransportError,
     ReviewContext,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -65,8 +68,19 @@ class GreptileAdapter(BaseProviderAdapter):
         if os_has_env(self.greptile_config.api_key_env_var):
             return self._invoke_api(context)
 
-        # Fallback to fixture in offline/test environment
-        return self._invoke_fixture(context)
+        # No credentials: only fall back to a synthetic fixture when explicitly allowed.
+        if self.greptile_config.dry_run or self.greptile_config.allow_fixture_fallback:
+            logger.warning(
+                "Greptile: no %s found; returning SYNTHETIC FIXTURE output "
+                "(execution_mode=fixture). This is NOT a genuine Greptile review.",
+                self.greptile_config.api_key_env_var,
+            )
+            return self._invoke_fixture(context)
+
+        raise ProviderAuthenticationError(
+            f"Greptile unavailable: set {self.greptile_config.api_key_env_var} "
+            f"or run with --dry-run to use synthetic fixtures."
+        )
 
     def _invoke_api(self, context: ReviewContext) -> ProviderRawResult:
         """Dispatch review request to Greptile REST API."""
@@ -144,6 +158,7 @@ class GreptileAdapter(BaseProviderAdapter):
             completion_tokens=120,
             duration_ms=130,
             model_name=self.default_model,
+            execution_mode="fixture",
         )
 
 

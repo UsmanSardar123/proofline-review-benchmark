@@ -1,0 +1,18 @@
+{
+  "response_id": "resp-att-cf-c05-162411",
+  "attempt_id": "att-cf-c05-162411",
+  "batch_id": "batch-campaign-11221624",
+  "provider_id": "cloudflare",
+  "case_id": "case-05",
+  "context_condition": "CODE_ONLY",
+  "model_name": "@cf/qwen/qwen2.5-coder-32b-instruct",
+  "prompt_tokens": 176,
+  "completion_tokens": 918,
+  "duration_ms": 22771,
+  "http_status": 200,
+  "finish_reason": "stop",
+  "received_at": "2026-11-22T16:25:19.797842+00:00",
+  "content_hash_sha256": "6adb5f534bb58ae8d0a65437e71477678137dbec440236ab5cad05118e5c8d2c",
+  "execution_mode": "live",
+  "is_synthetic": false
+}

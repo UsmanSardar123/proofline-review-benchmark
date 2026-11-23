@@ -47,7 +47,7 @@ class AnthropicAdapter(BaseProviderAdapter):
 
     provider_id = "anthropic"
     display_name = "Anthropic Claude"
-    default_model = "claude-3-5-sonnet-20241022"
+    default_model = "claude-sonnet-5-5"
 
     def __init__(self, config: Optional[AnthropicConfig] = None, **kwargs):
         cfg = config or AnthropicConfig(
@@ -177,4 +177,5 @@ class AnthropicAdapter(BaseProviderAdapter):
             duration_ms=65,
             model_name=self.default_model,
             finish_reason="end_turn",
+            execution_mode="dry_run",
         )

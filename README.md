@@ -23,11 +23,11 @@ The benchmark evaluates reviewers across eight realistic pull requests modifying
        [9b5ac64] Base: Stable asynchronous reporting and delivery engine
            │
            ├── [b422577] Case 01: Page report history by scheduled time (Logic Bug: Cursor Tie-Breaker)
-           ├── [9d551b8] Case 02: Stream the report export (Performance Bug: Buffer Memory Leak)
-           ├── [6cca1e9] Case 03: Batch queued deliveries (Concurrency Hazard: Transaction Boundary)
-           ├── [420baea] Case 04: Retire legacy delivery column (Schema Regression: Deprecated Column)
-           ├── [1f6f2a4] Case 05: Increase export batch size (Scalability Defect: Memory Spike)
-           ├── [fcb0c2a] Case 06: Use new delivery queue (Infra Regression: Stale Worker Target)
+           ├── [9d551b8] Case 02: Stream the report export (Data Integrity: Unescaped CSV Concatenation)
+           ├── [6cca1e9] Case 03: Batch queued deliveries (Logic Bug: Remainder Batch Loss in Range Step)
+           ├── [420baea] Case 04: Retire legacy delivery column (Deployment Conflict: Active Workers Rely on Column)
+           ├── [1f6f2a4] Case 05: Increase export batch size (Config Limit: Exceeds Cedar Site Receiver Limit)
+           ├── [fcb0c2a] Case 06: Use new delivery queue (Deployment Conflict: Elm Workers Only Subscribe to Legacy Queue)
            ├── [68ef658] Case 07: Index pending deliveries (Benign PR: Clean Index Optimization)
            └── [f869d7c] Case 08: Include total in activity summary (Benign PR: Clean Aggregation Feature)
 ```
@@ -74,12 +74,12 @@ flowchart TD
 
 | Case ID | Title | Partition | Deployment Snapshot? | Defect Category | Expected Action | Ground Truth Bug Summary |
 | :--- | :--- | :--- | :---: | :--- | :---: | :--- |
-| **case-01** | Page report history by scheduled time | Calibration | No | `LOGIC_BUG` | `BLOCK_PR` | Keyset pagination by timestamp without unique tie-breaker (`id`) skips rows when multiple jobs share the same timestamp. |
-| **case-02** | Stream the report export | Calibration | No | `RESOURCE_LEAK` | `BLOCK_PR` | Chunked CSV generator buffers chunks into an in-memory list before yielding, triggering OOM on large datasets. |
-| **case-03** | Batch queued deliveries | Calibration | No | `CONCURRENCY_BUG` | `BLOCK_PR` | Iterative status updates executed outside atomic transaction, risking partial updates on failure. |
-| **case-04** | Retire legacy delivery column | Held-Out | **Yes** | `SCHEMA_MISMATCH` | `BLOCK_PR` | Dropping `target_address` breaks active background workers running previous code during rolling deploy. |
-| **case-05** | Increase export batch size | Held-Out | **Yes** | `SCALABILITY_DEFECT` | `BLOCK_PR` | Increasing batch size to 10k exceeds container memory limits under max database concurrency. |
-| **case-06** | Use new delivery queue | Held-Out | **Yes** | `INFRA_MISMATCH` | `BLOCK_PR` | Routing to `delivery-v2` queue fails because production consumers are only provisioned for `default` and `priority`. |
+| **case-01** | Page report history by scheduled time | Calibration | No | `LOGIC_BUG` | `BLOCK_PR` | Keyset pagination by timestamp without unique tie-breaker (`id`) skips rows when multiple jobs share the same timestamp in `reports.py:44-49`. |
+| **case-02** | Stream the report export | Calibration | No | `DATA_INTEGRITY` | `BLOCK_PR` | Naive string join `",".join(...)` in `reports.py:50-57` fails on fields containing commas or quotes; proper RFC 4180 CSV serialization is required. |
+| **case-03** | Batch queued deliveries | Calibration | No | `LOGIC_BUG` | `BLOCK_PR` | Chunking loop `range(0, len(items), batch_size)` in `reports.py:73-90` drops remaining items when total count is not divisible by batch size. |
+| **case-04** | Retire legacy delivery column | Held-Out | **Yes** | `DEPLOYMENT_CONFLICT` | `BLOCK_PR` | Dropping `legacy_format` column in `migrations/002_retire_format.sql:1` breaks active Elm site workers that still depend on the column during rolling deployment. |
+| **case-05** | Increase export batch size | Held-Out | **Yes** | `CONFIG_LIMIT` | `BLOCK_PR` | Increasing `EXPORT_BATCH_SIZE` to 50 in `reports.py:10` exceeds the Cedar site receiver limit (`max_rows_per_request: 40`), causing delivery rejection. |
+| **case-06** | Use new delivery queue | Held-Out | **Yes** | `DEPLOYMENT_CONFLICT` | `BLOCK_PR` | Switching destination queue to `report-dispatch` in `reports.py:9` starves active Elm workers which only poll the `reports` queue. |
 | **case-07** | Index pending deliveries | Calibration | No | `BENIGN_CHANGE` | `APPROVE_PR` | Clean migration adding partial B-tree index on pending deliveries. Correct action is clean approval. |
 | **case-08** | Include total in summary | Held-Out | No | `BENIGN_CHANGE` | `APPROVE_PR` | Clean feature addition calculating total record count. Correct action is clean approval. |
 

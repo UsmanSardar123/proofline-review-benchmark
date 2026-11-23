@@ -15,6 +15,16 @@ from benchmark.reporting.matrix import (
     ProviderCaseMatrix,
 )
 
+# Explicit outcome abbreviations (slicing outcome[:2] rendered TRUE_POSITIVE as "TR").
+OUTCOME_ABBREVIATIONS = {
+    "TRUE_POSITIVE": "TP",
+    "CLEAN_PASS": "CL",
+    "FALSE_POSITIVE": "FP",
+    "FALSE_NEGATIVE": "FN",
+    "MIXED": "MX",
+    "UNSCORED": "US",
+}
+
 
 class MarkdownFormatter:
     """Renders benchmark matrices and summaries as GitHub-flavored Markdown tables."""
@@ -42,7 +52,9 @@ class MarkdownFormatter:
                     symbol = "✓" if cell.outcome in ("TRUE_POSITIVE", "CLEAN_PASS") else "✗"
                     f1_str = f"{cell.f1_score:.2f}" if cell.f1_score is not None else "-"
                     ev_mark = " 🔍" if cell.cites_evidence else ""
-                    row.append(f"{symbol} {cell.outcome[:2]} ({f1_str}){ev_mark}")
+                    abbrev = OUTCOME_ABBREVIATIONS.get(cell.outcome, cell.outcome[:2])
+                    synth = f" [{cell.execution_mode.upper()}]" if cell.is_synthetic else ""
+                    row.append(f"{symbol} {abbrev} ({f1_str}){ev_mark}{synth}")
 
             prec = f"{summary.precision:.2f}" if summary else "-"
             rec = f"{summary.recall:.2f}" if summary else "-"
@@ -51,7 +63,14 @@ class MarkdownFormatter:
             row.extend([prec, rec, f1, passed])
             lines.append("| " + " | ".join(row) + " |")
 
-        lines.append("\n*Legend: `✓ TP` = True Positive, `✓ CL` = Clean Pass on benign PR, `✗ FP` = False Positive, `✗ FN` = Missed Defect, `🔍` = Cited Deployment Evidence.*")
+        lines.append("\n*Legend: `✓ TP` = True Positive, `✓ CL` = Clean Pass on benign PR, `✗ FP` = False Positive, `✗ FN` = Missed Defect, `✗ MX` = Mixed (TP and FP), `🔍` = Cited Deployment Evidence, `[FIXTURE]`/`[DRY_RUN]`/`[MOCK]` = synthetic output, NOT a genuine external review. Columns suffixed `@code`/`@snap` separate CODE_ONLY and CODE_AND_SNAPSHOT attempts.*")
+        synthetic_providers = [p for p, s in matrix.provider_summaries.items() if s.synthetic_completed]
+        if synthetic_providers:
+            lines.append(
+                "\n> **Warning:** synthetic (fixture/dry-run/mock) results are included for: "
+                + ", ".join(f"`{p}` ({matrix.provider_summaries[p].synthetic_completed})" for p in synthetic_providers)
+                + ". Do not cite these as genuine reviewer performance."
+            )
         return "\n".join(lines)
 
     @staticmethod
@@ -101,7 +120,10 @@ class MarkdownFormatter:
             delta_sign = "+" if r.f1_delta > 0 else ""
             delta_str = f"{delta_sign}{r.f1_delta:.2f}"
             missed_str = ", ".join(r.missed_cases) if r.missed_cases else "None"
-            alert = "⚠️ Overfitting Risk" if r.is_overfitted else "✓ Generalizing"
+            if r.calibration_cases_count == 0 or r.heldout_cases_count == 0:
+                alert = "N/A (insufficient data)"
+            else:
+                alert = "⚠️ Overfitting Risk" if r.is_overfitted else "✓ Generalizing"
             lines.append(
                 f"| {r.provider_id} | {r.calibration_cases_count} | {r.heldout_cases_count} | {r.calibration_f1:.2f} | {r.heldout_f1:.2f} | {delta_str} | {missed_str} | {alert} |"
             )

@@ -132,4 +132,5 @@ class ManualProviderAdapter(BaseProviderAdapter):
             prompt_tokens=350,
             completion_tokens=90,
             duration_ms=45,
+            execution_mode="dry_run",
         )

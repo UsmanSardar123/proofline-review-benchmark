@@ -7,6 +7,33 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = Path(__file__).resolve().parent
 
+
+def load_project_env() -> None:
+    """Load key-value pairs from root .env if present without overwriting existing environment."""
+    env_file = PROJECT_ROOT / ".env"
+    if not env_file.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_file, override=False)
+    except ImportError:
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except Exception:
+            pass
+
+
+load_project_env()
+
 DEFAULT_DB_PATH = PROJECT_ROOT / "benchmark.sqlite"
 DEFAULT_MIGRATIONS_DIR = BENCHMARK_ROOT / "migrations"
 DEFAULT_CASES_DIR = PROJECT_ROOT / "cases"

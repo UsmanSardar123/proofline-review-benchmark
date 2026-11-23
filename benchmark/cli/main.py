@@ -5,7 +5,11 @@ import sys
 from typing import Optional
 
 from benchmark.cli.commands import (
+    cmd_automate,
     cmd_calibrate,
+    cmd_campaign,
+    cmd_cloudflare_status,
+    cmd_collect,
     cmd_ingest,
     cmd_init_db,
     cmd_list_batches,
@@ -311,6 +315,117 @@ def build_parser() -> argparse.ArgumentParser:
         help="Force overwrite if target attempt is already marked COMPLETED",
     )
 
+    # 12. automate
+    p_auto = subparsers.add_parser(
+        "automate",
+        help="Phase 2 automation pipeline: synchronize prompts, discover review files, ingest, score, and regenerate reports",
+    )
+    p_auto.add_argument(
+        "--no-ingest",
+        action="store_true",
+        help="Skip automatic ingestion of discovered review files",
+    )
+    p_auto.add_argument(
+        "--no-prompts",
+        action="store_true",
+        help="Skip prompt regeneration and synchronization",
+    )
+    p_auto.add_argument(
+        "--no-reports",
+        action="store_true",
+        help="Skip batch reports export",
+    )
+    p_auto.add_argument(
+        "--prompts-dir",
+        default=None,
+        help="Directory to store individualized review prompt files",
+    )
+    p_auto.add_argument(
+        "--reviews-dir",
+        default=None,
+        help="Directory to monitor and scan for newly saved reviewer responses",
+    )
+    p_auto.add_argument(
+        "--reports-dir",
+        default=None,
+        help="Directory to output regenerated comparative reports",
+    )
+
+    # 13. collect
+    p_collect = subparsers.add_parser(
+        "collect",
+        help="Automated review collection: pre-flight planning, token estimation, dry-run simulation, and authorized API dispatch",
+    )
+    p_collect.add_argument(
+        "--plan",
+        action="store_true",
+        help="Display scheduled collection matrix with token and cost breakdown",
+    )
+    p_collect.add_argument(
+        "--estimate-cost",
+        action="store_true",
+        help="Calculate projected API cost breakdown in USD",
+    )
+    p_collect.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Simulate collection workflow without making external API calls",
+    )
+    p_collect.add_argument(
+        "--run",
+        action="store_true",
+        help="Dispatch live collection (requires --allow-paid-api and API keys)",
+    )
+    p_collect.add_argument(
+        "--allow-paid-api",
+        action="store_true",
+        help="Safety gate: explicitly authorize billable external API requests",
+    )
+    p_collect.add_argument(
+        "--cost-limit",
+        type=float,
+        default=2.0,
+        help="Maximum financial ceiling in USD (default: $2.00)",
+    )
+    p_collect.add_argument(
+        "--provider",
+        default=None,
+        help="Optional provider filter (e.g. chatgpt-web, claude-web)",
+    )
+
+    # 14. cloudflare-status
+    p_cf = subparsers.add_parser(
+        "cloudflare-status",
+        help="Inspect Cloudflare Workers AI configuration, selected model, and daily local Neuron quota without making inference requests",
+    )
+    p_cf.add_argument(
+        "--model",
+        default=None,
+        help="Optional model ID to inspect (defaults to configured default model)",
+    )
+
+    # 15. campaign
+    p_camp = subparsers.add_parser(
+        "campaign",
+        help="Safe automated campaign runner for Cases 03-08 under Cloudflare Workers AI",
+    )
+    p_camp.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Execute simulated campaign workflow without external API calls",
+    )
+    p_camp.add_argument(
+        "--run",
+        action="store_true",
+        help="Execute live campaign reviews sequentially (requires explicit authorization)",
+    )
+    p_camp.add_argument(
+        "--cases",
+        default="3-8",
+        help="Cases to evaluate in campaign: '3-8' (default), or comma-separated numbers",
+    )
+
     return parser
 
 
@@ -391,6 +506,36 @@ def main(argv: Optional[list[str]] = None) -> int:
                 tokens=args.tokens,
                 duration_ms=args.duration_ms,
                 force=args.force,
+                db_path=args.db_path,
+            )
+        elif args.command == "automate":
+            return cmd_automate(
+                auto_ingest=not args.no_ingest,
+                regenerate_prompts=not args.no_prompts,
+                regenerate_reports=not args.no_reports,
+                prompts_dir=args.prompts_dir,
+                reviews_dir=args.reviews_dir,
+                reports_dir=args.reports_dir,
+                db_path=args.db_path,
+            )
+        elif args.command == "collect":
+            return cmd_collect(
+                show_plan=args.plan,
+                estimate_cost=args.estimate_cost,
+                dry_run=args.dry_run,
+                run=args.run,
+                allow_paid_api=args.allow_paid_api,
+                cost_limit=args.cost_limit,
+                provider=args.provider,
+                db_path=args.db_path,
+            )
+        elif args.command == "cloudflare-status":
+            return cmd_cloudflare_status(model=args.model)
+        elif args.command == "campaign":
+            return cmd_campaign(
+                dry_run=not args.run or args.dry_run,
+                run=args.run,
+                cases=args.cases,
                 db_path=args.db_path,
             )
         else:

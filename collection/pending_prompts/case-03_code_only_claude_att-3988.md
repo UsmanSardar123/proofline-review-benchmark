@@ -1,0 +1,61 @@
+<!--
+  METADATA FOR AUTOMATED INGESTION:
+  attempt_id: att-3988adbbc39f
+  batch_id: batch-8e1fac6e
+  provider_id: claude-web
+  case_id: case-03
+  context_condition: CODE_ONLY
+-->
+# BENCHMARK REVIEW PROMPT
+- **Case ID:** case-03
+- **Attempt ID:** att-3988adbbc39f
+- **Batch ID:** batch-8e1fac6e
+- **Provider Target:** claude-web
+- **Context Condition:** CODE_ONLY
+- **Base Commit:** 9b5ac64
+- **Head Commit:** 6cca1e9
+
+---
+
+# Pull Request Review: Batch queued deliveries
+
+## Description
+Group receipt inserts and delivery updates into batches of twenty to reduce statement setup overhead on busy queues.
+
+## Proposed Code Changes (Git Diff)
+```diff
+diff --git reports.py reports.py
+index 7cd951c..8e0b19e 100644
+--- reports.py
++++ reports.py
+@@ -73,10 +73,20 @@ def deliver_due(db, queue, now):
+             "AND scheduled_at <= ? ORDER BY scheduled_at, id",
+             (queue, now),
+         ).fetchall()
+-        for (job_id,) in jobs:
+-            db.execute("INSERT INTO receipts VALUES (?, ?)", (job_id, now))
+-            db.execute("UPDATE deliveries SET delivered_at = ? WHERE id = ?", (now, job_id))
+-    return len(jobs)
++        processed = 0
++        batch_size = 20
++        for start in range(0, len(jobs) - batch_size + 1, batch_size):
++            batch = jobs[start:start + batch_size]
++            db.executemany(
++                "INSERT INTO receipts VALUES (?, ?)",
++                ((job_id, now) for (job_id,) in batch),
++            )
++            db.executemany(
++                "UPDATE deliveries SET delivered_at = ? WHERE id = ?",
++                ((now, job_id) for (job_id,) in batch),
++            )
++            processed += len(batch)
++    return processed
+ 
+ 
+ def summary(db):
+```
+
+## Instructions
+Review the proposed changes above against the application baseline.
+Identify any logic bugs, data integrity issues, regressions, operational risks,
+or deployment conflicts. State clearly which file and line are affected and explain the issue.

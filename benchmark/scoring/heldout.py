@@ -61,8 +61,11 @@ class PartitionManager:
         held_f1 = held_rollup["micro_f1"]
         delta = round(held_f1 - cal_f1, 4)
 
-        # Overfitted if calibration F1 is significantly higher than held-out (> 0.25 gap)
-        is_overfitted = (cal_f1 - held_f1) > 0.25
+        # Overfitting can only be judged when BOTH partitions have scored attempts.
+        # With an empty partition the missing F1 defaults to 0.0, which previously
+        # produced a false overfitting alert.
+        both_present = cal_rollup["count"] > 0 and held_rollup["count"] > 0
+        is_overfitted = both_present and (cal_f1 - held_f1) > 0.25
 
         return GeneralizationReport(
             calibration_count=cal_rollup["count"],

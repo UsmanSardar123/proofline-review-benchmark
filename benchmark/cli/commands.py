@@ -24,6 +24,7 @@ from benchmark.db.repositories import (
     RunEventRepository,
 )
 from benchmark.domain.enums import AttemptStatus, ContextCondition
+from benchmark.orchestrator.automation import AutomationPipeline
 from benchmark.orchestrator.engine import BenchmarkOrchestrator
 from benchmark.providers.registry import ProviderRegistry
 from benchmark.scoring.calibration import CalibrationRegistry
@@ -82,6 +83,8 @@ def cmd_list_providers() -> int:
     auth_env_keys = {
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
+        "cloudflare": "CLOUDFLARE_API_TOKEN",
+        "cloudflare-ai": "CLOUDFLARE_API_TOKEN",
         "coderabbit": "CODERABBIT_API_KEY",
         "greptile": "GREPTILE_API_KEY",
         "mock": None,
@@ -818,3 +821,295 @@ def cmd_ingest(
         return 1
     finally:
         conn.close()
+
+
+def cmd_automate(
+    auto_ingest: bool = True,
+    regenerate_prompts: bool = True,
+    regenerate_reports: bool = True,
+    prompts_dir: Optional[str] = None,
+    reviews_dir: Optional[str] = None,
+    reports_dir: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> int:
+    """Execute end-to-end Phase 2 automation: prompt sync, review discovery, ingestion, scoring, reports."""
+    pipeline = AutomationPipeline(
+        db_path=db_path,
+        prompts_dir=prompts_dir,
+        reviews_dir=reviews_dir,
+        reports_dir=reports_dir,
+    )
+
+    print("\n" + "=" * 80)
+    print("PHASE 2 BENCHMARK AUTOMATION PIPELINE")
+    print("=" * 80)
+
+    summary = pipeline.run_automation_cycle(
+        auto_ingest=auto_ingest,
+        regenerate_prompts=regenerate_prompts,
+        regenerate_reports=regenerate_reports,
+    )
+
+    print(f"Pending Attempts Discovered:   {summary.discovered_pending_attempts}")
+    print(f"Prompts Synchronized:          {summary.prompts_generated}")
+    print(f"Review Files Scanned:          {summary.review_files_scanned}")
+    print(f"Eligible Reviews Ingested:     {summary.ingested_count}")
+    print(f"Duplicate / Unchanged Skipped: {summary.duplicate_skipped}")
+    print(f"Rejected / Unmatched:          {summary.rejected_count}")
+    print(f"Batch Reports Regenerated:     {len(summary.reports_regenerated)} ({', '.join(summary.reports_regenerated)})")
+
+    if summary.ingested_details:
+        print("\n" + "-" * 80)
+        print("NEWLY INGESTED REVIEWS & EVALUATIONS:")
+        print("-" * 80)
+        for d in summary.ingested_details:
+            print(
+                f"  [{d['provider_id']} / {d['case_id']}] -> Attempt: {d['attempt_id']} "
+                f"(File: {d['file']}) | TP={d['tp']} FP={d['fp']} FN={d['fn']} F1={d['f1']:.4f}"
+            )
+
+    if summary.errors:
+        print("\n" + "-" * 80)
+        print("PIPELINE WARNINGS / ERRORS:")
+        print("-" * 80)
+        for err in summary.errors:
+            print(f"  [!] {err}")
+
+    print("=" * 80 + "\n")
+    return 0
+
+
+def cmd_collect(
+    show_plan: bool = False,
+    estimate_cost: bool = False,
+    dry_run: bool = False,
+    run: bool = False,
+    allow_paid_api: bool = False,
+    cost_limit: float = 2.0,
+    provider: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> int:
+    """Pre-flight planning, token estimation, dry-run simulation, and automated collection."""
+    from benchmark.collector.dispatcher import CollectionDispatcher
+
+    dispatcher = CollectionDispatcher(db_path=db_path)
+    plan = dispatcher.create_plan(provider_filter=provider)
+
+    if not show_plan and not estimate_cost and not dry_run and not run:
+        # Default action: show plan overview and status
+        show_plan = True
+        estimate_cost = True
+
+    # Calculate per-provider cost breakdowns
+    openai_cost = sum(i.estimated_cost_usd for i in plan.items if i.target_api == "openai")
+    anthropic_cost = sum(i.estimated_cost_usd for i in plan.items if i.target_api == "anthropic")
+    openai_in_tokens = sum(i.estimated_prompt_tokens for i in plan.items if i.target_api == "openai")
+    openai_out_tokens = sum(i.estimated_completion_tokens for i in plan.items if i.target_api == "openai")
+    anthropic_in_tokens = sum(i.estimated_prompt_tokens for i in plan.items if i.target_api == "anthropic")
+    anthropic_out_tokens = sum(i.estimated_completion_tokens for i in plan.items if i.target_api == "anthropic")
+
+    print("\n" + "=" * 80)
+    print("AUTOMATED REVIEW COLLECTION DISPATCHER (ZERO-COST POLICY)")
+    print("=" * 80)
+    print("PROJECT SPENDING POLICY:   $0.00 USD (Zero-Cost / Strict Spending Limit)")
+    print("PRIMARY COLLECTION MODE:   Free Website Reviews (ChatGPT Web, Claude Web)")
+    print(f"Total Pending Attempts:    {plan.total_pending}")
+    print(f"  - OpenAI (ChatGPT):      {plan.openai_attempts} attempts | {openai_in_tokens:,} in / {openai_out_tokens:,} out | Est: ${openai_cost:.4f} USD")
+    print(f"  - Anthropic (Claude):    {plan.anthropic_attempts} attempts | {anthropic_in_tokens:,} in / {anthropic_out_tokens:,} out | Est: ${anthropic_cost:.4f} USD")
+    print(f"Total Projected Tokens:    ~{plan.total_prompt_tokens + plan.total_completion_tokens:,} tokens ({plan.total_prompt_tokens:,} input, {plan.total_completion_tokens:,} output)")
+    print(f"Theoretical API Cost:      ${plan.total_estimated_cost_usd:.4f} USD (Authorized Limit: $0.00)")
+    print("-" * 80)
+    print(f"OPENAI_API_KEY Status:     {'[CONFIGURED]' if plan.openai_key_present else '[NOT SET]'}")
+    print(f"ANTHROPIC_API_KEY Status:  {'[CONFIGURED]' if plan.anthropic_key_present else '[NOT SET]'}")
+    print("=" * 80)
+
+    if show_plan or dry_run:
+        print("\nSCHEDULED COLLECTION MATRIX:")
+        print(f"{'#':<3} {'Case ID':<8} {'Provider':<12} {'Model':<12} {'Context':<18} {'In Tok':<7} {'Out Tok':<8} {'Est. Cost':<10} {'Attempt ID'}")
+        print("-" * 95)
+        for idx, item in enumerate(plan.items, 1):
+            print(
+                f"{idx:<3} {item.case_id:<8} {item.provider_id:<12} {item.model_name:<12} "
+                f"{item.context_condition:<18} {item.estimated_prompt_tokens:<7} {item.estimated_completion_tokens:<8} "
+                f"${item.estimated_cost_usd:<9.4f} {item.attempt_id}"
+            )
+        print("-" * 95)
+
+    if dry_run:
+        print("\n[DRY-RUN EXECUTION] Simulating collection loop locally...")
+        res = dispatcher.execute_dry_run(plan)
+        print(f"[OK] Simulation successful for {res['total_simulated']} attempts.")
+        print(f"[OK] External API requests made: 0 (Zero external calls).")
+        print(f"[OK] Ingestion into database: SKIPPED (Dry-run mode, no fake reviews stored).")
+        print(f"[OK] Actual financial cost incurred: $0.00 USD.")
+
+    if run:
+        if not allow_paid_api:
+            print("\n[SAFETY GATE BLOCKED] Billable external API calls are disabled under the project's ZERO-COST POLICY.")
+            print("The project spending limit is $0.00 USD.")
+            print("Paid API requests are strictly blocked by default to prevent unauthorized charges.")
+            print("\nTo collect pending reviews at ZERO COST, use the local website automation pipeline:")
+            print("  1. Prompts are prepared in: collection/pending_prompts/")
+            print("  2. Submit prompt to free web ChatGPT / Claude.ai and save response into reviews/")
+            print("  3. Run local automation: python -m benchmark automate")
+            print("\nIf you ever explicitly authorize billable API calls in the future, rerun with:")
+            print("  python -m benchmark collect --run --allow-paid-api --cost-limit <max_usd>\n")
+            return 1
+
+        print(f"\n[RUNNING] Dispatching authorized API requests (Cost limit: ${cost_limit:.2f})...")
+        res = dispatcher.dispatch_authorized_collection(
+            allow_paid_api=True,
+            cost_limit_usd=cost_limit,
+            provider_filter=provider,
+        )
+        print(f"Collection Complete: {res['collected']} collected, {res['failed']} failed.")
+        print(f"Total API Cost Incurred: ${res['total_spent_usd']:.4f} USD")
+
+        # Automatically trigger pipeline to ingest and regenerate reports
+        print("\nTriggering benchmark automation pipeline to ingest newly captured reviews...")
+        cmd_automate(db_path=db_path)
+
+    print("\n" + "=" * 80 + "\n")
+    return 0
+
+
+def cmd_cloudflare_status(model: Optional[str] = None) -> int:
+    """Show the selected Cloudflare model, daily local usage, and remaining budget without network calls."""
+    from benchmark.providers.cloudflare import CloudflareAdapter, CloudflareConfig, SUPPORTED_MODELS
+
+    config = CloudflareConfig(dry_run=True)
+    if model:
+        if model in SUPPORTED_MODELS:
+            config.default_model = model
+        else:
+            print(f"[ERROR] Model '{model}' not found in supported free catalog. Supported models:", file=sys.stderr)
+            for k in SUPPORTED_MODELS:
+                print(f"  - {k}", file=sys.stderr)
+            return 1
+
+    adapter = CloudflareAdapter(config=config)
+    summary = adapter.get_status_summary()
+
+    print("\n" + "=" * 80)
+    print("CLOUDFLARE WORKERS AI ZERO-COST STATUS & USAGE AUDIT")
+    print("=" * 80)
+    print(f"Provider:                  {summary['display_name']} ({summary['provider_id']})")
+    print(f"Selected Model ID:         {summary['selected_model']}")
+    print(f"Model Description:         {summary['model_name']}")
+    print(f"Free-Tier Eligible:        {'YES' if summary['free_eligible'] else 'NO'}")
+    print(f"Credentials Configured:    Account ID: {'[OK]' if summary['account_id_configured'] else '[NOT SET]'}, Token: {'[OK]' if summary['token_configured'] else '[NOT SET]'}")
+    print("-" * 80)
+    print(f"Cloudflare Daily Free Allowance:   {summary['daily_free_allowance']:,} Neurons / day")
+    print(f"Conservative Local Daily Limit:    {summary['daily_conservative_limit']:,} Neurons (50% safety buffer)")
+    print(f"Local Neurons Consumed Today:      {summary['daily_neurons_used']:,} Neurons")
+    print(f"Local Neurons Remaining Today:     {summary['daily_neurons_remaining']:,} Neurons")
+    print(f"Estimated Neurons / Review:        ~{summary['est_neurons_per_review']} Neurons")
+    print(f"Estimated Safe Reviews Remaining:  ~{summary['est_reviews_remaining']} reviews")
+    print("-" * 80)
+    print(f"Max Input Tokens:          {summary['max_input_tokens']} tokens")
+    print(f"Max Output Tokens:         {summary['max_output_tokens']} tokens")
+    print(f"Paid Overage Allowed:      {'NO (Hard Zero-Cost Policy)' if not summary['allow_paid_overage'] else 'YES'}")
+    print("=" * 80)
+    print("[SAFE] Local status inspected without making any external AI inference requests.\n")
+    return 0
+
+
+def cmd_campaign(
+    dry_run: bool = True,
+    run: bool = False,
+    cases: str = "3-8",
+    db_path: Optional[str] = None,
+) -> int:
+    """Execute safe automated benchmark campaign for Cases 03-08 under Cloudflare Workers AI."""
+    from benchmark.orchestrator.campaign import SafeCampaignRunner, ALLOWED_CAMPAIGN_CASES
+
+    # Parse case list
+    cases_arg = cases.strip().lower()
+    if cases_arg in ("3-8", "3..8", "3,4,5,6,7,8", "all-remaining"):
+        target_cases = list(ALLOWED_CAMPAIGN_CASES)
+    else:
+        try:
+            target_cases = [int(p.strip()) for p in cases.split(",") if p.strip()]
+        except ValueError:
+            print(f"[ERROR] Invalid cases argument '{cases}'. Expected comma-separated integers (e.g. '3,4,5,6,7,8').", file=sys.stderr)
+            return 1
+
+    runner = SafeCampaignRunner(db_path=db_path)
+
+    print("\n" + "=" * 80)
+    print("CLOUDFLARE WORKERS AI AUTOMATED CAMPAIGN RUNNER")
+    print("=" * 80)
+    print("Campaign Target:           Cases 03 to 08 (Remaining Calibration & Held-Out Cases)")
+    print("Configured Model:          @cf/qwen/qwen2.5-coder-32b-instruct")
+    print(f"Execution Mode:            {'DRY-RUN (Offline Simulation)' if (dry_run and not run) else 'LIVE INFERENCE'}")
+    print("Zero-Cost Spending Policy: $0.00 USD (Hard Spending Limit)")
+    print("Paid Fallback / Overage:   DISABLED")
+    print("=" * 80)
+
+    # 1. Run Preflight Audit
+    audit = runner.audit_preflight(target_cases=target_cases)
+    if not audit.is_valid:
+        print("\n[PREFLIGHT AUDIT FAILED - FAIL-CLOSED]")
+        for err in audit.errors:
+            print(f"  [X] {err}", file=sys.stderr)
+        print("Campaign aborted before execution.\n", file=sys.stderr)
+        return 1
+
+    print("\nPREFLIGHT CASE VALIDATION & ANTI-LEAK AUDIT:")
+    print(f"{'Case':<8} {'Defect Category':<22} {'Prompt Chars':<14} {'Est. In Tok':<12} {'Est. Neurons':<13} {'Leak Check'}")
+    print("-" * 80)
+    for ca in audit.case_audits:
+        cats = ", ".join(ca.defect_categories)
+        print(
+            f"{ca.case_id:<8} {cats:<22} {ca.prompt_length_chars:<14} {ca.estimated_input_tokens:<12} "
+            f"{ca.estimated_neurons:<13} {'[PASSED]' if ca.leak_check_passed else '[LEAK]'}"
+        )
+    print("-" * 80)
+    print(f"Total Projected Input Tokens:   ~{audit.total_estimated_input_tokens:,} tokens")
+    print(f"Total Projected Completion:     ~{audit.total_estimated_output_tokens:,} tokens")
+    print(f"Total Projected Compute:        ~{audit.total_estimated_neurons} Neurons")
+    print(f"Current Daily Usage:            {audit.current_neurons_consumed} Neurons")
+    print(f"Remaining Local Budget:         {audit.remaining_daily_budget} Neurons (from {audit.conservative_daily_limit} ceiling)")
+    print(f"Preflight Validation Status:    ALL CHECKS PASSED")
+
+    if run and not dry_run:
+        print("\n[RUNNING] Executing sequential live campaign across Cases 03-08...")
+        report = runner.execute_live_campaign(authorized=True, target_cases=target_cases)
+    else:
+        print("\n[DRY-RUN] Executing campaign in dry-run mode (Zero API requests)...")
+        report = runner.execute_dry_run(target_cases=target_cases)
+
+    print("\n" + "=" * 80)
+    print(f"CAMPAIGN EXECUTION REPORT ({report.mode.upper()})")
+    print("=" * 80)
+    print(f"Batch ID:                  {report.batch_id}")
+    print(f"Total Planned Attempts:    {report.total_planned}")
+    print(f"Completed Successfully:    {report.completed}")
+    print(f"Failed:                    {report.failed}")
+    print(f"Skipped / Halted:          {report.skipped}")
+    if report.halt_reason:
+        print(f"Halt Reason:               {report.halt_reason}")
+    print("-" * 80)
+    print("CASE EXECUTION DETAILS:")
+    print(f"{'Case':<8} {'Attempt ID':<22} {'Status':<11} {'Dur(ms)':<8} {'In/Out Tok':<12} {'Neurons':<9} {'TP':<4} {'FP':<4} {'FN':<4} {'F1'}")
+    print("-" * 85)
+    for cr in report.case_results:
+        tok_str = f"{cr.prompt_tokens or 0}/{cr.completion_tokens or 0}"
+        print(
+            f"{cr.case_id:<8} {cr.attempt_id:<22} {cr.status:<11} {cr.duration_ms or 0:<8} "
+            f"{tok_str:<12} {cr.neurons_consumed or 0:<9} {cr.tp_count:<4} {cr.fp_count:<4} {cr.fn_count:<4} {cr.f1_score:.2f}"
+        )
+    print("-" * 85)
+    print("AGGREGATE BENCHMARK PERFORMANCE:")
+    print(f"  Micro-Averaged:          Precision: {report.micro_precision:.4f} | Recall: {report.micro_recall:.4f} | F1: {report.micro_f1:.4f}")
+    print(f"  Macro-Averaged:          Precision: {report.macro_precision:.4f} | Recall: {report.macro_recall:.4f} | F1: {report.macro_f1:.4f}")
+    print(f"Total Duration:            {report.total_duration_ms} ms")
+    print(f"Campaign Neurons Consumed: {report.total_neurons_consumed} Neurons")
+    print(f"Final Day's Neuron Total:  {report.final_neurons_used} Neurons")
+    print(f"Remaining Budget Today:    {report.remaining_budget_neurons} Neurons")
+    print(f"Actual Project Spend:      ${report.actual_dollar_cost:.2f} USD")
+    print("=" * 80 + "\n")
+    return 0
+
+
+

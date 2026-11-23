@@ -1,0 +1,4 @@
+provider_id,planned,completed,quota_halted,failed,pending,completion_rate_pct
+chatgpt-web,3,0,0,0,3,0.0
+claude-web,3,0,0,0,3,0.0
+TOTAL,6,0,0,0,6,0.0

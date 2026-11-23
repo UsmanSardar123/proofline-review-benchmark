@@ -13,8 +13,8 @@ class DatabaseFoundationTests(unittest.TestCase):
     def test_clean_creation_and_migration(self):
         con = get_connection(":memory:")
         applied = migrate_benchmark_db(con)
-        self.assertEqual(applied, [1])
-        self.assertEqual(get_current_version(con), 1)
+        self.assertEqual(applied, [1, 2])
+        self.assertEqual(get_current_version(con), 2)
 
         # Check all 12 core benchmark tables exist
         tables = [
@@ -42,12 +42,12 @@ class DatabaseFoundationTests(unittest.TestCase):
     def test_migration_idempotency(self):
         con = get_connection(":memory:")
         first_run = migrate_benchmark_db(con)
-        self.assertEqual(first_run, [1])
+        self.assertEqual(first_run, [1, 2])
 
         # Second run should be a no-op
         second_run = migrate_benchmark_db(con)
         self.assertEqual(second_run, [])
-        self.assertEqual(get_current_version(con), 1)
+        self.assertEqual(get_current_version(con), 2)
 
     def test_foreign_key_integrity(self):
         con = get_connection(":memory:")
